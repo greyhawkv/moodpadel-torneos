@@ -728,13 +728,22 @@ function Wizard({ onCreate, onCancel }) {
 }
 
 /* ───────────────────────── solapas ───────────────────────── */
+// "Agustin Hernandez" -> "Agustin H". Si solo hay un nombre (sin apellido cargado), lo deja tal cual.
+const shortName = full => {
+  const parts = (full || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] || "";
+  return `${parts[0]} ${parts[1][0].toUpperCase()}`;
+};
+const teamNameFrom = (p1, p2) => [shortName(p1), shortName(p2)].filter(Boolean).join(" | ");
+
 function TeamsTab({ t, save, readOnly }) {
-  const empty = { name:"", player1Name:"", player2Name:"", groupId: t.groups[0]?.id || null, notes:"", photoDataUrl:null };
+  const empty = { player1Name:"", player2Name:"", groupId: t.groups[0]?.id || null, notes:"", photoDataUrl:null };
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState(null);
   const [err, setErr] = useState("");
   const fileRef = useRef(null);
   const set = (k,v) => setForm(s => ({ ...s, [k]:v }));
+  const previewName = teamNameFrom(form.player1Name, form.player2Name);
 
   const onPhoto = file => {
     if (!file) return;
@@ -749,18 +758,18 @@ function TeamsTab({ t, save, readOnly }) {
   };
 
   const submit = () => {
-    if (!form.name.trim()) return setErr("El equipo necesita un nombre.");
     if (!form.player1Name.trim() || !form.player2Name.trim()) return setErr("Cargá los dos jugadores.");
-    const dup = t.teams.some(x => x.name.trim().toLowerCase() === form.name.trim().toLowerCase() && x.id !== editing);
-    if (dup) return setErr("Ya existe un equipo con ese nombre.");
+    const name = teamNameFrom(form.player1Name, form.player2Name);
+    const dup = t.teams.some(x => x.name.trim().toLowerCase() === name.trim().toLowerCase() && x.id !== editing);
+    if (dup) return setErr(`Ya hay un equipo que quedaría con el mismo nombre ("${name}"). Agregá el apellido completo para diferenciarlos.`);
     if (!editing && t.teams.length >= t.numberOfTeams) return setErr(`El torneo se configuró con ${t.numberOfTeams} equipos.`);
     if (t.hasGroupStage && form.groupId) {
       const inGroup = t.teams.filter(x => x.groupId === form.groupId && x.id !== editing).length;
       if (inGroup >= t.teamsPerGroup) return setErr("Ese grupo ya está completo.");
     }
     const teams = editing
-      ? t.teams.map(x => x.id === editing ? { ...x, ...form } : x)
-      : [...t.teams, { id: uid(), tournamentId: t.id, seed: t.teams.length + 1, ...form }];
+      ? t.teams.map(x => x.id === editing ? { ...x, ...form, name } : x)
+      : [...t.teams, { id: uid(), tournamentId: t.id, seed: t.teams.length + 1, ...form, name }];
     save({ ...t, teams });
     setForm({ ...empty, groupId: form.groupId }); setEditing(null); setErr("");
     if (fileRef.current) fileRef.current.value = "";
@@ -790,17 +799,17 @@ function TeamsTab({ t, save, readOnly }) {
       <div className="card">
         <h3>{editing ? "Editar equipo" : "Agregar equipo"}</h3>
         <div className="grid3">
-          <label className="f"><span>Equipo</span><input className="inp" value={form.name} onChange={e => set("name", e.target.value)} /></label>
-          <label className="f"><span>Jugador 1</span><input className="inp" value={form.player1Name} onChange={e => set("player1Name", e.target.value)} /></label>
-          <label className="f"><span>Jugador 2</span><input className="inp" value={form.player2Name} onChange={e => set("player2Name", e.target.value)} /></label>
-        </div>
-        <div className="grid3">
+          <label className="f"><span>Jugador A</span><input className="inp" placeholder="Nombre y apellido" value={form.player1Name} onChange={e => set("player1Name", e.target.value)} /></label>
+          <label className="f"><span>Jugador B</span><input className="inp" placeholder="Nombre y apellido" value={form.player2Name} onChange={e => set("player2Name", e.target.value)} /></label>
           {t.hasGroupStage && (
             <label className="f"><span>Grupo</span>
               <select className="inp" value={form.groupId || ""} onChange={e => set("groupId", e.target.value)}>
                 {t.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select></label>
           )}
+        </div>
+        {previewName && <div className="note">El equipo va a quedar como <b>{previewName}</b>.</div>}
+        <div className="grid3">
           <label className="f"><span>Foto</span>
             <input className="inp" type="file" accept="image/*" ref={fileRef} onChange={e => onPhoto(e.target.files?.[0])} /></label>
           <label className="f"><span>Notas</span><input className="inp" value={form.notes} onChange={e => set("notes", e.target.value)} /></label>
@@ -826,7 +835,7 @@ function TeamsTab({ t, save, readOnly }) {
                   <div className="sub">{x.player1Name} · {x.player2Name}{x.notes ? ` — ${x.notes}` : ""}</div>
                 </div>
                 {x.groupId && <span className="chip dark">{t.groups.find(g => g.id === x.groupId)?.name}</span>}
-                <button className="btn ghost sm" onClick={() => { setEditing(x.id); setForm({ name:x.name, player1Name:x.player1Name, player2Name:x.player2Name, groupId:x.groupId, notes:x.notes||"", photoDataUrl:x.photoDataUrl }); }}>Editar</button>
+                <button className="btn ghost sm" onClick={() => { setEditing(x.id); setForm({ player1Name:x.player1Name, player2Name:x.player2Name, groupId:x.groupId, notes:x.notes||"", photoDataUrl:x.photoDataUrl }); }}>Editar</button>
                 <button className="btn danger sm" onClick={() => remove(x.id)}>Eliminar</button>
               </div>
             ))}
