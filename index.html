@@ -451,9 +451,18 @@ function deriveKO(t) {
 }
 
 /* ───────────────────────── piezas de UI ───────────────────────── */
+// Iniciales del placeholder: una letra por jugador (ej. "Agustín H | Agustín O" -> "AA"),
+// para que no se repita todo el tiempo la misma letra del nombre del equipo.
+const initialsOf = team => {
+  const a = team?.player1Name?.trim()?.[0];
+  const b = team?.player2Name?.trim()?.[0];
+  const s = `${a || ""}${b || ""}`.toUpperCase();
+  return s || team?.name?.trim()?.[0]?.toUpperCase() || "—";
+};
+
 const Avatar = ({ team, size = 26 }) => team?.photoDataUrl
   ? <img className="avatar" src={team.photoDataUrl} alt="" style={{ width:size, height:size }} />
-  : <div className="avatar ph" style={{ width:size, height:size }} aria-hidden="true">{team?.name?.[0]?.toUpperCase() || "—"}</div>;
+  : <div className="avatar ph" style={{ width:size, height:size, fontSize: Math.round(size*0.42) }} aria-hidden="true">{initialsOf(team)}</div>;
 
 // Reemplaza a window.confirm: dentro de un iframe de artifact los diálogos nativos
 // pueden no aparecer y devolver falso sin que el usuario vea nada, dejando el botón "sin efecto".
@@ -915,7 +924,7 @@ function GroupsTab({ t, save, readOnly }) {
                     <tbody>{rows.map(r => (
                       <tr key={r.teamId} className={cut && r.rank <= cut ? "qual" : ""}>
                         <td>{r.rank}{r.tied ? "=" : ""}</td>
-                        <td>{byId[r.teamId]?.name}</td>
+                        <td><div className="row" style={{ gap:8, alignItems:"center" }}><Avatar team={byId[r.teamId]} size={24} />{byId[r.teamId]?.name}</div></td>
                         <td>{r.wins}</td><td>{r.losses}</td>
                         <td>{r.gamesFor}</td><td>{r.gamesAgainst}</td>
                         <td>{r.diff > 0 ? `+${r.diff}` : r.diff}</td>
@@ -941,8 +950,10 @@ function StandingsTab({ t }) {
     <div className="groupgrid" style={{ marginTop:16 }}>
       {t.groups.map(g => {
         const teams = t.teams.filter(x => x.groupId === g.id);
-        const rows = standingsFor(teams, t.matches.filter(m => m.phase === "group" && m.groupId === g.id));
-        const tiedAtCut = t.qualifiersPerGroup && rows[t.qualifiersPerGroup-1] && rows[t.qualifiersPerGroup] &&
+        const groupMatches = t.matches.filter(m => m.phase === "group" && m.groupId === g.id);
+        const groupDone = groupMatches.length > 0 && groupMatches.every(m => m.status === "completed");
+        const rows = standingsFor(teams, groupMatches);
+        const tiedAtCut = groupDone && t.qualifiersPerGroup && rows[t.qualifiersPerGroup-1] && rows[t.qualifiersPerGroup] &&
           rows[t.qualifiersPerGroup-1].rank === rows[t.qualifiersPerGroup].rank;
         return (
           <div className="card" key={g.id} style={{ marginTop:0 }}>
@@ -954,7 +965,7 @@ function StandingsTab({ t }) {
                   <tbody>{rows.map(r => (
                     <tr key={r.teamId} className={t.qualifiersPerGroup && r.rank <= t.qualifiersPerGroup ? "qual" : ""}>
                       <td>{r.rank}{r.tied ? "=" : ""}</td>
-                      <td>{byId[r.teamId]?.name}</td>
+                      <td><div className="row" style={{ gap:8, alignItems:"center" }}><Avatar team={byId[r.teamId]} size={24} />{byId[r.teamId]?.name}</div></td>
                       <td>{r.wins}</td><td>{r.losses}</td>
                       <td>{r.gamesFor}</td><td>{r.gamesAgainst}</td>
                       <td>{r.diff > 0 ? `+${r.diff}` : r.diff}</td>
