@@ -153,6 +153,15 @@ tr.qual td:first-child{box-shadow:inset 3px 0 0 var(--pelota);color:var(--tinta)
 .confirm-overlay{position:fixed;inset:0;background:rgba(20,26,24,.55);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
 .confirm-box{background:var(--papel);border-radius:16px;padding:22px;max-width:360px;width:100%;box-shadow:0 20px 50px rgba(20,26,24,.3)}
 .confirm-box p{margin:0 0 18px;font-family:var(--body);color:var(--tinta);line-height:1.4}
+.levels{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:12px}
+.levelcard{display:flex;gap:10px;text-align:left;padding:12px;border:1px solid var(--linea);border-radius:10px;background:var(--papel);cursor:pointer;font-family:inherit}
+.levelcard:hover{border-color:var(--pista)}
+.levelcard.sel{border-color:var(--pista);background:#FBFEE3;box-shadow:inset 0 0 0 1px var(--pista)}
+.lvnum{flex:none;width:28px;height:28px;border-radius:50%;background:var(--tinta);color:var(--pelota);display:grid;place-items:center;font-family:var(--mono);font-weight:700;font-size:13px}
+.levelcard.sel .lvnum{background:var(--pista)}
+.lvname{font-family:var(--display);font-weight:700;font-size:15px;margin-bottom:3px}
+.lvdesc{font-size:12px;color:var(--gris);line-height:1.35}
+.tabbadge{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:9px;background:var(--falta);color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;vertical-align:middle}
 .champion{background:var(--pista);color:#fff;border-radius:4px;padding:26px 20px;text-align:center;margin-top:16px}
 .champion .nm2{font-family:var(--display);font-size:clamp(32px,6vw,58px);font-weight:800;text-transform:uppercase;
   border-bottom:4px solid var(--pelota);display:inline-block;padding-bottom:6px;line-height:1}
@@ -397,7 +406,7 @@ function newTournament(cfg) {
     qualifiersPerGroup: cfg.qualifiersPerGroup || 0,
     knockoutStartRound: cfg.knockoutStartRound,
     allowByes: cfg.allowByes,
-    groups, teams: [], matches: [], ko: null,
+    groups, teams: [], matches: [], ko: null, registrations: [],
     createdAt: Date.now(), updatedAt: Date.now(),
   };
 }
@@ -466,6 +475,37 @@ const Avatar = ({ team, size = 26 }) => team?.photoDataUrl
 
 // Reemplaza a window.confirm: dentro de un iframe de artifact los diálogos nativos
 // pueden no aparecer y devolver falso sin que el usuario vea nada, dejando el botón "sin efecto".
+// Escala de nivel de Padel Connect (la misma que usa la comunidad de pádel en Ginebra),
+// traducida al español para mantener consistencia con el resto de la app.
+const PADEL_LEVELS = [
+  { n:1, name:"Debutante", desc:"Empiezo a jugar. Aprendo los golpes básicos." },
+  { n:2, name:"Perfeccionamiento", desc:"Juego los golpes básicos. Juego lento, con intercambios cortos. Empiezo a volear." },
+  { n:3, name:"Elemental", desc:"Juego por diversión. Sé sacar y juego partidos con intercambios tratando de mantener la bola en juego." },
+  { n:4, name:"Intermedio", desc:"Juego partidos con intercambios largos y subidas-bajadas repetidas a la red. Subo a la red en el saque y después de un globo. Bajo en defensa ante el globo rival para devolver la bola. Juego la bola después del rebote en el vidrio. Domino la colocación según mi compañero, esté en la red o atrás. A veces logro devolver en defensa de doble vidrio o un 360. Cometo errores no forzados." },
+  { n:5, name:"Confirmado", desc:"Domino mi juego: saque-volea, repliegue en los globos, contraataque, golpes con efecto, devoluciones al cuerpo o en globo, y colocación en sintonía con mi compañero. Termino puntos de volea y de smash. Juego los vidrios en defensa y devuelvo en doble vidrio. Sé jugar el 360. Cometo algunos errores no forzados, en defensa bajo presión, y al forzar mis ataques." },
+  { n:6, name:"Avanzado", desc:"Tengo un juego regular, sin errores no forzados. Domino el juego rápido y los efectos, en el saque y en el punto. Varío zonas y velocidades de mis voleas. Defiendo los dobles vidrios con dominio. Domino perfectamente el 360. Termino puntos con smash liftado o controlado, con vidrio o bandeja. Contraataco los smashes del rival." },
+  { n:7, name:"Avanzado +", desc:"Domino todos los aspectos del juego y las tácticas del pádel. Termino puntos con golpes ganadores frente a una defensa sólida (mismo nivel). No cometo errores directos. Domino perfectamente los dobles vidrios y los uso para contraatacar, y los efectos, especialmente la bandeja y la víbora." },
+  { n:8, name:"Experto", desc:"Clasificado entre los 20 mejores de Suiza en categoría Open." },
+  { n:9, name:"Experto +", desc:"Clasificado entre los 5 mejores de Suiza en categoría Open." },
+  { n:10, name:"Élite", desc:"Soy jugador profesional." },
+];
+
+function LevelPicker({ value, onChange }) {
+  return (
+    <div className="levels">
+      {PADEL_LEVELS.map(lv => (
+        <button key={lv.n} type="button" className={`levelcard ${value===lv.n ? "sel" : ""}`} onClick={() => onChange(lv.n)}>
+          <div className="lvnum">{lv.n}</div>
+          <div>
+            <div className="lvname">{lv.name}</div>
+            <div className="lvdesc">{lv.desc}</div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Confirm({ open, message, confirmLabel = "Confirmar", onConfirm, onCancel }) {
   if (!open) return null;
   return (
@@ -855,6 +895,100 @@ function TeamsTab({ t, save, readOnly }) {
   );
 }
 
+function RegistrationsTab({ t, save }) {
+  const [picked, setPicked] = useState([]);
+  const [copied, setCopied] = useState(false);
+  const regs = t.registrations || [];
+  const active = regs.filter(r => r.status !== "waitlist");
+  const waitlist = regs.filter(r => r.status === "waitlist");
+  const paired = active.filter(r => r.mode === "pair");
+  const solos = active.filter(r => r.mode === "solo");
+  const activeOccupied = t.teams.length + active.length;
+
+  const base = typeof window !== "undefined" ? window.location.href.split("#")[0] : "";
+  const link = `${base}#inscribirse=${t.id}`;
+  const copy = () => navigator.clipboard?.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); });
+
+  const convert = ids => {
+    const list = regs.filter(r => ids.includes(r.id));
+    if (!list.length) return;
+    const player1Name = list[0].player1Name;
+    const player2Name = list[0].mode === "pair" ? list[0].player2Name : (list[1]?.player1Name || "");
+    const name = teamNameFrom(player1Name, player2Name);
+    const notes = list.map(r => `${r.player1Name}: nivel ${r.level} (${r.whatsapp})`).join(" · ");
+    const team = { id: uid(), tournamentId: t.id, seed: t.teams.length + 1, player1Name, player2Name,
+      groupId: t.groups[0]?.id || null, notes, photoDataUrl: null, name };
+    save({ ...t, teams: [...t.teams, team], registrations: regs.filter(r => !ids.includes(r.id)) });
+    setPicked([]);
+  };
+  const remove = id => save({ ...t, registrations: regs.filter(r => r.id !== id) });
+  const promote = id => save({ ...t, registrations: regs.map(r => r.id === id ? { ...r, status:"active" } : r) });
+
+  return (
+    <div className="card">
+      <h3>Inscripciones</h3>
+      <p className="sub">Compartí este link para que la gente se anote sola, sin que vos tengas que cargar nada. {activeOccupied}/{t.numberOfTeams} lugares ocupados (entre equipos ya cargados e inscripciones pendientes).</p>
+      <div className="row" style={{ marginTop:10 }}>
+        <button className="btn primary sm" onClick={copy}>{copied ? "Link copiado" : "Copiar link de inscripción"}</button>
+      </div>
+
+      <h3 style={{ marginTop:24 }}>Parejas anotadas ({paired.length})</h3>
+      {!paired.length ? <p className="sub">Todavía no hay inscripciones en pareja.</p> : (
+        <div className="list">
+          {paired.map(r => (
+            <div className="tcard" key={r.id}>
+              <div style={{ flex:1 }}>
+                <b>{teamNameFrom(r.player1Name, r.player2Name)}</b>
+                <div className="sub">Nivel {r.level} · {r.whatsapp}</div>
+              </div>
+              <button className="btn primary sm" onClick={() => convert([r.id])}>Convertir en equipo</button>
+              <button className="btn ghost sm" onClick={() => remove(r.id)}>Borrar</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <h3 style={{ marginTop:24 }}>Buscan compañero/a ({solos.length})</h3>
+      {!solos.length ? <p className="sub">Nadie anotado como solo por ahora.</p> : (
+        <>
+          <p className="sub">Marcá dos para emparejarlos en un mismo equipo.</p>
+          <div className="list">
+            {solos.map(r => (
+              <div className="tcard" key={r.id}>
+                <label className="row" style={{ flex:1, cursor:"pointer" }}>
+                  <input type="checkbox" checked={picked.includes(r.id)}
+                    onChange={e => setPicked(p => e.target.checked ? [...p, r.id] : p.filter(x => x !== r.id))} />
+                  <div><b>{r.player1Name}</b><div className="sub">Nivel {r.level} · {r.whatsapp}</div></div>
+                </label>
+                <button className="btn ghost sm" onClick={() => remove(r.id)}>Borrar</button>
+              </div>
+            ))}
+          </div>
+          <button className="btn primary sm" style={{ marginTop:10 }} disabled={picked.length !== 2} onClick={() => convert(picked)}>
+            Emparejar y crear equipo ({picked.length}/2)
+          </button>
+        </>
+      )}
+
+      <h3 style={{ marginTop:24 }}>Lista de espera ({waitlist.length})</h3>
+      {!waitlist.length ? <p className="sub">Nadie en lista de espera.</p> : (
+        <div className="list">
+          {waitlist.map(r => (
+            <div className="tcard" key={r.id}>
+              <div style={{ flex:1 }}>
+                <b>{r.mode === "pair" ? teamNameFrom(r.player1Name, r.player2Name) : r.player1Name}</b>
+                <div className="sub">{r.mode === "pair" ? "Pareja" : "Busca compañero/a"} · Nivel {r.level} · {r.whatsapp}</div>
+              </div>
+              <button className="btn primary sm" onClick={() => promote(r.id)}>Pasar a inscriptos</button>
+              <button className="btn ghost sm" onClick={() => remove(r.id)}>Borrar</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GroupsTab({ t, save, readOnly }) {
   const [open, setOpen] = useState(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
@@ -1201,6 +1335,87 @@ function PublicTab({ t }) {
   );
 }
 
+/* ───────────────────────── inscripción pública ───────────────────────── */
+function RegisterView({ id }) {
+  const [t, setT] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState("pair"); // "pair" | "solo"
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
+  const [level, setLevel] = useState(null);
+  const [whatsapp, setWhatsapp] = useState("");
+  const [err, setErr] = useState("");
+  const [sending, setSending] = useState(false);
+  const [done, setDone] = useState(false);
+  const [waitlisted, setWaitlisted] = useState(false);
+
+  useEffect(() => { (async () => { setT(await store.get(KEY(id))); setLoading(false); })(); }, [id]);
+
+  const shell = children => (
+    <div className="pista-app">
+      <style>{CSS}</style>
+      <div className="topbar"><div className="wrap"><div className="topline">
+        <div><div className="meta">Inscripción</div><h1>{t ? t.name : "MoodPadel"}</h1></div>
+      </div></div></div>
+      <div className="wrap"><div className="card">{children}</div></div>
+    </div>
+  );
+
+  if (loading) return shell(<p className="sub">Cargando…</p>);
+  if (!t) return shell(<><h3>No encontramos este torneo</h3><p className="sub">Puede que el link esté mal, o que el torneo se haya borrado.</p></>);
+
+  const regs = t.registrations || [];
+  const activeOccupied = t.teams.length + regs.filter(r => r.status !== "waitlist").length;
+  const full = activeOccupied >= t.numberOfTeams;
+
+  if (done) return shell(waitlisted
+    ? <><h3>Quedaste en la lista de espera</h3><p className="sub">El torneo ya tiene el cupo completo. Si se libera un lugar te avisamos por WhatsApp.</p></>
+    : <><h3>¡Listo, quedaste anotado/a!</h3><p className="sub">Te contactamos por WhatsApp para confirmarte los detalles.</p></>);
+
+  const submit = async () => {
+    if (!p1.trim()) return setErr("Falta tu nombre.");
+    if (mode === "pair" && !p2.trim()) return setErr("Falta el nombre de tu compañero/a.");
+    if (!level) return setErr("Elegí tu nivel.");
+    if (!whatsapp.trim()) return setErr("Falta tu WhatsApp.");
+    setSending(true); setErr("");
+    const fresh = await store.get(KEY(id));
+    if (!fresh) { setSending(false); return setErr("Este torneo ya no está disponible."); }
+    const freshRegs = fresh.registrations || [];
+    const freshActiveOccupied = fresh.teams.length + freshRegs.filter(r => r.status !== "waitlist").length;
+    const goesToWaitlist = freshActiveOccupied >= fresh.numberOfTeams;
+    const reg = { id: uid(), mode, player1Name:p1.trim(), player2Name: mode==="pair" ? p2.trim() : "", level, whatsapp:whatsapp.trim(),
+      status: goesToWaitlist ? "waitlist" : "active", createdAt: Date.now() };
+    const next = { ...fresh, registrations: [...freshRegs, reg], updatedAt: Date.now() };
+    const r = await store.set(KEY(id), next);
+    setSending(false);
+    if (r && r.error) return setErr("No se pudo enviar. Probá de nuevo en un rato.");
+    setWaitlisted(goesToWaitlist);
+    setDone(true);
+  };
+
+  return shell(
+    <>
+      <h3>Anotate a {t.name}</h3>
+      <p className="sub">{t.date} · {full ? "cupo completo" : `${t.numberOfTeams - activeOccupied} lugares libres de ${t.numberOfTeams}`}</p>
+      {full && <div className="note">El cupo ya se completó, pero podés anotarte en la <b>lista de espera</b> — te avisamos por WhatsApp si se libera un lugar.</div>}
+      <div className="row" style={{ marginTop:12 }}>
+        <button type="button" className={`btn ${mode==="pair" ? "primary" : "ghost"} sm`} onClick={() => setMode("pair")}>Tengo compañero/a</button>
+        <button type="button" className={`btn ${mode==="solo" ? "primary" : "ghost"} sm`} onClick={() => setMode("solo")}>Busco compañero/a</button>
+      </div>
+      <div className="grid3" style={{ marginTop:14 }}>
+        <label className="f"><span>Tu nombre</span><input className="inp" value={p1} onChange={e => setP1(e.target.value)} placeholder="Nombre y apellido" /></label>
+        {mode === "pair" && <label className="f"><span>Compañero/a</span><input className="inp" value={p2} onChange={e => setP2(e.target.value)} placeholder="Nombre y apellido" /></label>}
+        <label className="f"><span>Tu WhatsApp</span><input className="inp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="+41 78 ..." /></label>
+      </div>
+      <h3 style={{ marginTop:24 }}>Tu nivel</h3>
+      <p className="sub">Escala de Padel Connect. Elegí el que más se parezca a tu juego — no hace falta ser exacto.</p>
+      <LevelPicker value={level} onChange={setLevel} />
+      {err && <div className="warn">{err}</div>}
+      <button className="btn ball" style={{ marginTop:18 }} disabled={sending} onClick={submit}>{sending ? "Enviando…" : full ? "Anotarme en lista de espera" : "Anotarme"}</button>
+    </>
+  );
+}
+
 /* ───────────────────────── vista pública read-only ───────────────────────── */
 function ReadOnlyView({ t, onExit }) {
   const TABS = ["Equipos", "Grupos", "Posiciones", "Knockouts"].filter(x => t.hasGroupStage || (x !== "Grupos" && x !== "Posiciones"));
@@ -1242,6 +1457,7 @@ function ReadOnlyView({ t, onExit }) {
 /* ───────────────────────── app ───────────────────────── */
 function App() {
   const [publicT, setPublicT] = useState(null);
+  const [registerId, setRegisterId] = useState(null);
   const [index, setIndex] = useState([]);
   const [t, setT] = useState(null);
   const [tab, setTab] = useState("Grupos");
@@ -1252,6 +1468,7 @@ function App() {
   const [importError, setImportError] = useState("");
   const [secretModal, setSecretModal] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [seenAt, setSeenAt] = useState(0);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -1259,8 +1476,14 @@ function App() {
     if (h.startsWith("#t=")) {
       try { setPublicT(fromPublic(JSON.parse(b64d(h.slice(3))))); setLoading(false); return; } catch {}
     }
+    if (h.startsWith("#inscribirse=")) { setRegisterId(decodeURIComponent(h.slice(13))); setLoading(false); return; }
     (async () => { if (store.ok()) setIndex(await store.get(IDX, [])); setLoading(false); })();
   }, []);
+
+  useEffect(() => {
+    if (!t) return;
+    try { setSeenAt(Number(localStorage.getItem(`pista:seen:${t.id}`)) || 0); } catch { setSeenAt(0); }
+  }, [t?.id]);
 
   const persist = useCallback(async next => {
     if (!store.ok()) return;
@@ -1302,8 +1525,9 @@ function App() {
       catch { setImportError("Ese archivo no es un torneo válido."); } }; fr.readAsText(file); };
 
   if (publicT) return <ReadOnlyView t={publicT} onExit={() => { window.location.hash = ""; setPublicT(null); }} />;
+  if (registerId) return <RegisterView id={registerId} />;
 
-  const TABS = ["Configuración","Equipos","Grupos","Posiciones","Knockouts","Vista pública"];
+  const TABS = ["Configuración","Equipos","Inscripciones","Grupos","Posiciones","Knockouts","Vista pública"];
 
   return (
     <div className="pista-app">
@@ -1328,11 +1552,19 @@ function App() {
           </div>
           {t && (
             <div className="tabs" role="tablist">
-              {TABS.map(x => (
-                <button key={x} role="tab" aria-selected={tab===x} className="tab"
-                  disabled={(x==="Grupos"||x==="Posiciones") && !t.hasGroupStage}
-                  onClick={() => setTab(x)}>{x}</button>
-              ))}
+              {TABS.map(x => {
+                const newRegs = x === "Inscripciones" ? (t.registrations||[]).filter(r => r.createdAt > seenAt).length : 0;
+                return (
+                  <button key={x} role="tab" aria-selected={tab===x} className="tab"
+                    disabled={(x==="Grupos"||x==="Posiciones") && !t.hasGroupStage}
+                    onClick={() => {
+                      setTab(x);
+                      if (x === "Inscripciones") { const now = Date.now(); try { localStorage.setItem(`pista:seen:${t.id}`, String(now)); } catch {} setSeenAt(now); }
+                    }}>
+                    {x}{newRegs > 0 && <span className="tabbadge">{newRegs}</span>}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1403,6 +1635,7 @@ function App() {
         )}
 
         {t && tab === "Equipos" && <TeamsTab t={t} save={save} />}
+        {t && tab === "Inscripciones" && <RegistrationsTab t={t} save={save} />}
         {t && tab === "Grupos" && <GroupsTab t={t} save={save} />}
         {t && tab === "Posiciones" && <StandingsTab t={t} />}
         {t && tab === "Knockouts" && <KnockoutTab t={t} save={save} />}
