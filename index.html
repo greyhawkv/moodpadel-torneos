@@ -8,16 +8,9 @@
 </head>
 <body>
 <div id="root"></div>
-
-<!-- React + ReactDOM (producción) -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<!-- Babel standalone: transpila el JSX directo en el navegador (sin paso de build) -->
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-<!-- El código de la app va en un tipo no ejecutable: lo transformamos nosotros a mano
-     forzando el runtime "classic" (React.createElement), porque el runtime "automatic"
-     por default de Babel inyecta un import de ES modules que no funciona en un script suelto. -->
 <script type="text/plain" id="app-source">
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
@@ -348,6 +341,18 @@ function standingsFor(teams, matches) {
 // Pegá acá la URL de tu Apps Script (termina en /exec). Ver GUIA-SETUP-BACKEND.md.
 const BACKEND_URL = "https://script.google.com/macros/s/AKfycbyOrNA0Sb19B-NKdey0ihxujznfDI4ZZ1t34XBeYaCV0kC8JJSz5eDRb_gtnYXL2sk6/exec";
 
+// Palabra secreta para poder VER la app de organizador ("Mis torneos" y todo lo de adentro).
+// No protege nada por sí sola (se chequea en el navegador, no en el servidor) — es para que
+// alguien que se cruce con el link no se ponga a curiosear, no un reemplazo de la clave de
+// colaborador de arriba (esa sigue protegiendo guardar/borrar). Los links de "Vista pública"
+// e "Inscribite" no piden esto: son públicos a propósito.
+const VIEW_PASSWORD = "cambiamepormifrase";
+
+const viewAuth = {
+  get() { try { return localStorage.getItem("pista:viewauth") === "ok"; } catch { return false; } },
+  set() { try { localStorage.setItem("pista:viewauth", "ok"); } catch {} },
+};
+
 const secretStore = {
   get() { try { return localStorage.getItem("pista:secret") || ""; } catch { return ""; } },
   set(v) { try { localStorage.setItem("pista:secret", v); } catch {} },
@@ -576,6 +581,7 @@ function Scoreboard({ teamA, teamB, sets, winnerId, isBye, onClick, disabled }) 
 function ResultModal({ match, teamA, teamB, onSave, onClear, onClose }) {
   const [sets, setSets] = useState(match.sets?.length ? match.sets.map(s => ({ ...s })) : [{ a:"", b:"" }]);
   const [err, setErr] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
   const upd = (i, k, v) => setSets(s => s.map((x, j) => j === i ? { ...x, [k]: v.replace(/[^0-9]/g,"").slice(0,2) } : x));
   const hasTb = sets.some(s => s.tb);
   let sn = 0;
@@ -615,8 +621,10 @@ function ResultModal({ match, teamA, teamB, onSave, onClear, onClose }) {
             <button className="btn primary" onClick={save}>Guardar resultado</button>
             <button className="btn ghost" onClick={onClose}>Cancelar</button>
           </div>
-          {match.sets?.length ? <button className="btn danger sm" onClick={onClear}>Borrar resultado</button> : null}
+          {match.sets?.length ? <button className="btn danger sm" onClick={() => setConfirmClear(true)}>Borrar resultado</button> : null}
         </div>
+        <Confirm open={confirmClear} message="Se borra el resultado cargado de este partido. ¿Deseás continuar?"
+          confirmLabel="Borrar" onCancel={() => setConfirmClear(false)} onConfirm={() => { onClear(); setConfirmClear(false); }} />
       </div>
     </div>
   );
@@ -790,6 +798,7 @@ function TeamsTab({ t, save, readOnly }) {
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState(null);
   const [err, setErr] = useState("");
+  const [confirmDel, setConfirmDel] = useState(null); // { id, name }
   const fileRef = useRef(null);
   const set = (k,v) => setForm(s => ({ ...s, [k]:v }));
   const previewName = teamNameFrom(form.player1Name, form.player2Name);
@@ -885,12 +894,14 @@ function TeamsTab({ t, save, readOnly }) {
                 </div>
                 {x.groupId && <span className="chip dark">{t.groups.find(g => g.id === x.groupId)?.name}</span>}
                 <button className="btn ghost sm" onClick={() => { setEditing(x.id); setForm({ player1Name:x.player1Name, player2Name:x.player2Name, groupId:x.groupId, notes:x.notes||"", photoDataUrl:x.photoDataUrl }); }}>Editar</button>
-                <button className="btn danger sm" onClick={() => remove(x.id)}>Eliminar</button>
+                <button className="btn danger sm" onClick={() => setConfirmDel({ id:x.id, name:x.name })}>Eliminar</button>
               </div>
             ))}
           </div>
         )}
       </div>
+      <Confirm open={!!confirmDel} message={`Se elimina "${confirmDel?.name}" del torneo. ¿Deseás continuar?`}
+        confirmLabel="Eliminar" onCancel={() => setConfirmDel(null)} onConfirm={() => { remove(confirmDel.id); setConfirmDel(null); }} />
     </>
   );
 }
@@ -898,6 +909,7 @@ function TeamsTab({ t, save, readOnly }) {
 function RegistrationsTab({ t, save }) {
   const [picked, setPicked] = useState([]);
   const [copied, setCopied] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null); // { id, label }
   const regs = t.registrations || [];
   const active = regs.filter(r => r.status !== "waitlist");
   const waitlist = regs.filter(r => r.status === "waitlist");
@@ -942,7 +954,7 @@ function RegistrationsTab({ t, save }) {
                 <div className="sub">Nivel {r.level} · {r.whatsapp}</div>
               </div>
               <button className="btn primary sm" onClick={() => convert([r.id])}>Convertir en equipo</button>
-              <button className="btn ghost sm" onClick={() => remove(r.id)}>Borrar</button>
+              <button className="btn ghost sm" onClick={() => setConfirmDel({ id:r.id, label:teamNameFrom(r.player1Name, r.player2Name) })}>Borrar</button>
             </div>
           ))}
         </div>
@@ -960,7 +972,7 @@ function RegistrationsTab({ t, save }) {
                     onChange={e => setPicked(p => e.target.checked ? [...p, r.id] : p.filter(x => x !== r.id))} />
                   <div><b>{r.player1Name}</b><div className="sub">Nivel {r.level} · {r.whatsapp}</div></div>
                 </label>
-                <button className="btn ghost sm" onClick={() => remove(r.id)}>Borrar</button>
+                <button className="btn ghost sm" onClick={() => setConfirmDel({ id:r.id, label:r.player1Name })}>Borrar</button>
               </div>
             ))}
           </div>
@@ -980,11 +992,13 @@ function RegistrationsTab({ t, save }) {
                 <div className="sub">{r.mode === "pair" ? "Pareja" : "Busca compañero/a"} · Nivel {r.level} · {r.whatsapp}</div>
               </div>
               <button className="btn primary sm" onClick={() => promote(r.id)}>Pasar a inscriptos</button>
-              <button className="btn ghost sm" onClick={() => remove(r.id)}>Borrar</button>
+              <button className="btn ghost sm" onClick={() => setConfirmDel({ id:r.id, label:r.player1Name })}>Borrar</button>
             </div>
           ))}
         </div>
       )}
+      <Confirm open={!!confirmDel} message={`Se borra la inscripción de "${confirmDel?.label}". ¿Deseás continuar?`}
+        confirmLabel="Borrar" onCancel={() => setConfirmDel(null)} onConfirm={() => { remove(confirmDel.id); setConfirmDel(null); }} />
     </div>
   );
 }
@@ -1335,6 +1349,33 @@ function PublicTab({ t }) {
   );
 }
 
+/* ───────────────────────── puerta de acceso ───────────────────────── */
+function Gate({ onUnlock }) {
+  const [v, setV] = useState("");
+  const [err, setErr] = useState(false);
+  const submit = () => {
+    if (v.trim().toLowerCase() === VIEW_PASSWORD.trim().toLowerCase()) { viewAuth.set(); onUnlock(); }
+    else setErr(true);
+  };
+  return (
+    <div className="pista-app" style={{ minHeight:"100vh", display:"grid", placeItems:"center" }}>
+      <style>{CSS}</style>
+      <div style={{ textAlign:"center", padding:24, width:"100%", maxWidth:360 }}>
+        <img src={LOGO_MOODPADEL} alt="MoodPadel" style={{ height:56, margin:"0 auto 28px", display:"block" }} />
+        <div className="card">
+          <p className="sub">Palabra secreta</p>
+          <input className="inp" type="password" value={v}
+            onChange={e => { setV(e.target.value); setErr(false); }}
+            onKeyDown={e => e.key === "Enter" && submit()}
+            autoFocus placeholder="…" style={{ textAlign:"center" }} />
+          {err && <div className="warn">Esa no es. Probá de nuevo.</div>}
+          <button className="btn ball" style={{ marginTop:14, width:"100%" }} onClick={submit}>Entrar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ───────────────────────── inscripción pública ───────────────────────── */
 function RegisterView({ id }) {
   const [t, setT] = useState(null);
@@ -1378,19 +1419,22 @@ function RegisterView({ id }) {
     if (!level) return setErr("Elegí tu nivel.");
     if (!whatsapp.trim()) return setErr("Falta tu WhatsApp.");
     setSending(true); setErr("");
-    const fresh = await store.get(KEY(id));
-    if (!fresh) { setSending(false); return setErr("Este torneo ya no está disponible."); }
-    const freshRegs = fresh.registrations || [];
-    const freshActiveOccupied = fresh.teams.length + freshRegs.filter(r => r.status !== "waitlist").length;
-    const goesToWaitlist = freshActiveOccupied >= fresh.numberOfTeams;
-    const reg = { id: uid(), mode, player1Name:p1.trim(), player2Name: mode==="pair" ? p2.trim() : "", level, whatsapp:whatsapp.trim(),
-      status: goesToWaitlist ? "waitlist" : "active", createdAt: Date.now() };
-    const next = { ...fresh, registrations: [...freshRegs, reg], updatedAt: Date.now() };
-    const r = await store.set(KEY(id), next);
-    setSending(false);
-    if (r && r.error) return setErr("No se pudo enviar. Probá de nuevo en un rato.");
-    setWaitlisted(goesToWaitlist);
-    setDone(true);
+    const reg = { id: uid(), mode, player1Name:p1.trim(), player2Name: mode==="pair" ? p2.trim() : "", level, whatsapp:whatsapp.trim(), createdAt: Date.now() };
+    try {
+      const res = await fetch(BACKEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" }, // evita el preflight CORS de Apps Script
+        body: JSON.stringify({ action:"register", key: KEY(id), registration: reg }),
+      });
+      const j = await res.json();
+      setSending(false);
+      if (!j || j.error) return setErr("No se pudo enviar. Probá de nuevo en un rato.");
+      setWaitlisted(j.status === "waitlist");
+      setDone(true);
+    } catch {
+      setSending(false);
+      setErr("No se pudo enviar. Probá de nuevo en un rato.");
+    }
   };
 
   return shell(
@@ -1458,6 +1502,7 @@ function ReadOnlyView({ t, onExit }) {
 function App() {
   const [publicT, setPublicT] = useState(null);
   const [registerId, setRegisterId] = useState(null);
+  const [unlocked, setUnlocked] = useState(() => viewAuth.get());
   const [index, setIndex] = useState([]);
   const [t, setT] = useState(null);
   const [tab, setTab] = useState("Grupos");
@@ -1526,6 +1571,7 @@ function App() {
 
   if (publicT) return <ReadOnlyView t={publicT} onExit={() => { window.location.hash = ""; setPublicT(null); }} />;
   if (registerId) return <RegisterView id={registerId} />;
+  if (!unlocked) return <Gate onUnlock={() => setUnlocked(true)} />;
 
   const TABS = ["Configuración","Equipos","Inscripciones","Grupos","Posiciones","Knockouts","Vista pública"];
 
