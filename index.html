@@ -489,6 +489,13 @@ const pairKey = (a, b) => [a, b].sort().join("|");
 // vecinos se mezclen con moderación (el "puente" cuando hace falta), y niveles
 // lejanos casi nunca terminen en el mismo grupo de 4 — incluso si quedaron en
 // la misma división grande por falta de gente suficiente en cada nivel.
+// Si a o b puso que prefiere no tener compañero/a de sexo distinto, y sus
+// sexos difieren, esa pareja viola la preferencia de alguno de los dos.
+// Preferencia general (no depende de lo que haya elegido cada persona): dentro
+// de un mismo nivel, tratar de que las parejas sean del mismo sexo — pero el
+// nivel manda siempre por encima de esto (ver el peso mucho mayor del spread).
+const differentSex = (a, b) => a.sex && b.sex && a.sex !== b.sex;
+
 function roundForDivision(players, history, attempts = 120) {
   const matchSize = 4;
   const restNeeded = players.length % matchSize;
@@ -531,7 +538,8 @@ function roundForDivision(players, history, attempts = 120) {
         const vc = history.partners[pairKey(vs[0].id, vs[1].id)] || 0;
         let oc = 0;
         team.forEach(a => vs.forEach(b => { oc += history.opponents[pairKey(a.id, b.id)] || 0; }));
-        const s = (pc + vc) * 10 + oc * 3;
+        const mixPenalty = (differentSex(team[0], team[1]) ? 50 : 0) + (differentSex(vs[0], vs[1]) ? 50 : 0);
+        const s = (pc + vc) * 10 + oc * 3 + mixPenalty;
         if (s < bestSplitScore) { bestSplitScore = s; bestSplit = { team, vs }; }
       }
       matches.push(bestSplit);
@@ -559,7 +567,7 @@ function applyRoundToHistory(history, round) {
 // Genera TODAS las rondas de un Meet & Play a partir de sus inscriptos actuales.
 // Devuelve el arreglo `rounds` listo para guardar en el evento.
 function generateMeetPlayRounds(mp) {
-  const players = (mp.registrations || []).map(r => ({ id:r.id, name:r.player1Name, level:r.level }));
+  const players = (mp.registrations || []).map(r => ({ id:r.id, name:r.player1Name, level:r.level, sex:r.sex||null }));
   const divisions = buildDivisions(players);
   const histories = divisions.map(initHistory);
   const rounds = [];
@@ -1263,7 +1271,7 @@ function MeetPlayRegistrationsTab({ t, save }) {
             <div className="tcard" key={r.id}>
               <div style={{ flex:1 }}>
                 <b>{r.player1Name}</b>
-                <div className="sub">Nivel {r.level} · {r.whatsapp}</div>
+                <div className="sub">Nivel {r.level} · {r.sex === "M" ? "Hombre" : r.sex === "F" ? "Mujer" : "—"} · {r.whatsapp}</div>
               </div>
               <button className="btn ghost sm" onClick={() => setConfirmDel({ id:r.id, label:r.player1Name })}>Borrar</button>
             </div>
@@ -1728,6 +1736,7 @@ function RegisterView({ id }) {
   const [p2, setP2] = useState("");
   const [level, setLevel] = useState(null);
   const [whatsapp, setWhatsapp] = useState("");
+  const [sex, setSex] = useState(null); // "M" | "F" — solo se pide en Meet & Play
   const [err, setErr] = useState("");
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
@@ -1762,9 +1771,11 @@ function RegisterView({ id }) {
     if (!isMeetPlay && mode === "pair" && !p2.trim()) return setErr("Falta el nombre de tu compañero/a.");
     if (!level) return setErr("Elegí tu nivel.");
     if (!whatsapp.trim()) return setErr("Falta tu WhatsApp.");
+    if (isMeetPlay && !sex) return setErr("Elegí una opción para continuar.");
     setSending(true); setErr("");
     const reg = { id: uid(), mode: isMeetPlay ? "individual" : mode, player1Name:p1.trim(),
-      player2Name: (!isMeetPlay && mode === "pair") ? p2.trim() : "", level, whatsapp:whatsapp.trim(), createdAt: Date.now() };
+      player2Name: (!isMeetPlay && mode === "pair") ? p2.trim() : "", level, whatsapp:whatsapp.trim(),
+      ...(isMeetPlay ? { sex } : {}), createdAt: Date.now() };
     try {
       const res = await fetch(BACKEND_URL, {
         method: "POST",
@@ -1798,6 +1809,15 @@ function RegisterView({ id }) {
         {!isMeetPlay && mode === "pair" && <label className="f"><span>Compañero/a</span><input className="inp" value={p2} onChange={e => setP2(e.target.value)} placeholder="Nombre y apellido" /></label>}
         <label className="f"><span>Tu WhatsApp</span><input className="inp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="+41 78 ..." /></label>
       </div>
+      {isMeetPlay && (
+        <>
+          <h3 style={{ marginTop:24 }}>Vos</h3>
+          <div className="row" style={{ marginTop:8 }}>
+            <button type="button" className={`btn ${sex==="M" ? "primary" : "ghost"} sm`} onClick={() => setSex("M")}>Hombre</button>
+            <button type="button" className={`btn ${sex==="F" ? "primary" : "ghost"} sm`} onClick={() => setSex("F")}>Mujer</button>
+          </div>
+        </>
+      )}
       <h3 style={{ marginTop:24 }}>Tu nivel</h3>
       <p className="sub">Escala de Padel Connect. Elegí el que más se parezca a tu juego — no hace falta ser exacto.</p>
       <LevelPicker value={level} onChange={setLevel} />
