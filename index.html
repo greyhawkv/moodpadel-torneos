@@ -147,7 +147,7 @@ tr.qual td:first-child{box-shadow:inset 3px 0 0 var(--pelota);color:var(--tinta)
 .confirm-box{background:var(--papel);border-radius:16px;padding:22px;max-width:360px;width:100%;box-shadow:0 20px 50px rgba(20,26,24,.3)}
 .confirm-box p{margin:0 0 18px;font-family:var(--body);color:var(--tinta);line-height:1.4}
 .levels{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:12px}
-.levelcard{display:flex;gap:10px;text-align:left;padding:12px;border:1px solid var(--linea);border-radius:10px;background:var(--papel);cursor:pointer;font-family:inherit}
+.levelcard{display:flex;gap:10px;text-align:left;padding:12px;border:1px solid var(--linea);border-radius:10px;background:var(--papel);cursor:pointer;font-family:inherit;color:var(--tinta)}
 .levelcard:hover{border-color:var(--pista)}
 .levelcard.sel{border-color:var(--pista);background:#FBFEE3;box-shadow:inset 0 0 0 1px var(--pista)}
 .lvnum{flex:none;width:28px;height:28px;border-radius:50%;background:var(--tinta);color:var(--pelota);display:grid;place-items:center;font-family:var(--mono);font-weight:700;font-size:13px}
@@ -339,14 +339,14 @@ function standingsFor(teams, matches) {
 
 /* ───────────────────────── persistencia ───────────────────────── */
 // Pegá acá la URL de tu Apps Script (termina en /exec). Ver GUIA-SETUP-BACKEND.md.
-const BACKEND_URL = "https://script.google.com/macros/s/AKfycbyOrNA0Sb19B-NKdey0ihxujznfDI4ZZ1t34XBeYaCV0kC8JJSz5eDRb_gtnYXL2sk6/exec";
+const BACKEND_URL = "https://script.google.com/macros/s/AKfycbx7hhrOgnxUn59TtMCq1oDtq4T11boyPwWa1pIqBoU4qXVTKfqRZuLsUEsL5EV4hhXj/exec";
 
 // Palabra secreta para poder VER la app de organizador ("Mis torneos" y todo lo de adentro).
 // No protege nada por sí sola (se chequea en el navegador, no en el servidor) — es para que
 // alguien que se cruce con el link no se ponga a curiosear, no un reemplazo de la clave de
 // colaborador de arriba (esa sigue protegiendo guardar/borrar). Los links de "Vista pública"
 // e "Inscribite" no piden esto: son públicos a propósito.
-const VIEW_PASSWORD = "cambiamepormifrase";
+const VIEW_PASSWORD = "Chingott0";
 
 const viewAuth = {
   get() { try { return localStorage.getItem("pista:viewauth") === "ok"; } catch { return false; } },
@@ -1358,7 +1358,7 @@ function Gate({ onUnlock }) {
     else setErr(true);
   };
   return (
-    <div className="pista-app" style={{ minHeight:"100vh", display:"grid", placeItems:"center" }}>
+    <div className="pista-app" style={{ minHeight:"100vh", display:"grid", placeItems:"center", background:"#000" }}>
       <style>{CSS}</style>
       <div style={{ textAlign:"center", padding:24, width:"100%", maxWidth:360 }}>
         <img src={LOGO_MOODPADEL} alt="MoodPadel" style={{ height:56, margin:"0 auto 28px", display:"block" }} />
