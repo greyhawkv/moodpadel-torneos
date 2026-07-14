@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>MoodPadel — Gestor de torneos</title>
@@ -193,7 +196,6 @@ const rsEncode=(data,ecLen)=>{const g=genPoly(ecLen),res=new Array(ecLen).fill(0
   for(const d of data){const f=d^res[0];res.shift();res.push(0);for(let i=0;i<ecLen;i++)res[i]^=gmul(g[i+1],f);}return res;};
 const blocksOf=v=>{const e=RSB[v-1],o=[];for(let i=0;i<e.length;i+=3)for(let k=0;k<e[i];k++)o.push({total:e[i+1],data:e[i+2]});return o;};
 const capacity=v=>blocksOf(v).reduce((s,b)=>s+b.data,0);
-const QR_MAX=capacity(40)-3; // capacidad real en bytes (byte mode)
 const bch=(data,poly,bits)=>{let d=data<<bits;const gb=poly.toString(2).length-1;
   for(let i=data.toString(2).length+bits-1;i>=gb;i--)if((d>>i)&1)d^=poly<<(i-gb);
   return (data<<bits)|d;};
@@ -274,30 +276,41 @@ function qrMatrix(text){
 const uid = () => Math.random().toString(36).slice(2, 10);
 const ROUND_NAMES = { 32:"Dieciseisavos de final", 16:"Octavos de final", 8:"Cuartos de final", 4:"Semifinales", 2:"Final" };
 const nextPow2 = n => { let s = 2; while (s < n) s *= 2; return s; };
-const b64e = s => { const b = new TextEncoder().encode(s); let bin = ""; b.forEach(x => bin += String.fromCharCode(x));
-  return btoa(bin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); };
-const b64d = s => { const bin = atob(s.replace(/-/g,"+").replace(/_/g,"/"));
-  return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))); };
 
 const seedOrder = n => { let a = [1,2]; while (a.length < n) { const m = a.length*2+1, o = []; a.forEach(s => { o.push(s); o.push(m-s); }); a = o; } return a; };
 
-/** Empareja la primera ronda: 1 vs N por siembra, byes a los mejores,
- *  y repara cruces del mismo grupo intercambiando rivales cercanos. */
+/** Empareja la primera ronda: 1 vs N por siembra, byes a los mejores, y repara
+ *  cruces problemáticos intercambiando rivales. Dos reglas, con prioridad:
+ *  1) Que dos 1ros de grupo se enfrenten — evitar A TODA COSTA (costo 1000).
+ *  2) Que se repita el mismo grupo — evitar si se puede (costo 10).
+ *  Si en algún cruce no hay forma de evitar ambas a la vez, se sacrifica la
+ *  regla 2 (se permite repetir grupo) antes que la 1 (nunca dos primeros).
+ *  Búsqueda: en cada paso, aplica el intercambio entre dos partidos cuales-
+ *  quiera que más baje el costo total, hasta que no haya ninguno que mejore. */
 function buildFirstRound(entries, size) {
   const slots = seedOrder(size).map(s => entries[s-1] || null);
   const pairs = [];
   for (let i = 0; i < size; i += 2) pairs.push([slots[i], slots[i+1]]);
-  const clash = p => p[0] && p[1] && p[0].groupId && p[0].groupId === p[1].groupId;
-  for (let i = 0; i < pairs.length; i++) {
-    if (!clash(pairs[i])) continue;
-    let done = false;
-    for (let d = 1; d < pairs.length && !done; d++) {
-      for (const j of [i-d, i+d]) {
-        if (j < 0 || j >= pairs.length || j === i || !pairs[j][1]) continue;
+
+  const sameGroup = p => p[0] && p[1] && p[0].groupId != null && p[0].groupId === p[1].groupId;
+  const topClash = p => p[0] && p[1] && p[0].groupRank === 1 && p[1].groupRank === 1;
+  const pairCost = p => (topClash(p) ? 1000 : 0) + (sameGroup(p) ? 10 : 0);
+
+  let guard = 0;
+  while (guard++ < 500) {
+    let bestDelta = 0, bestSwap = null;
+    for (let i = 0; i < pairs.length; i++) {
+      if (pairCost(pairs[i]) === 0) continue;
+      for (let j = 0; j < pairs.length; j++) {
+        if (j === i || !pairs[j][1]) continue;
+        const before = pairCost(pairs[i]) + pairCost(pairs[j]);
         const a = [pairs[i][0], pairs[j][1]], b = [pairs[j][0], pairs[i][1]];
-        if (!clash(a) && !clash(b)) { pairs[i] = a; pairs[j] = b; done = true; break; }
+        const after = pairCost(a) + pairCost(b);
+        if (after - before < bestDelta) { bestDelta = after - before; bestSwap = { i, j, a, b }; }
       }
     }
+    if (!bestSwap) break; // ya no hay ningún intercambio que mejore la situación
+    pairs[bestSwap.i] = bestSwap.a; pairs[bestSwap.j] = bestSwap.b;
   }
   return pairs;
 }
@@ -403,7 +416,7 @@ function newTournament(cfg) {
     ? Array.from({ length: cfg.numberOfGroups }, (_, i) => ({ id: uid(), name: `Grupo ${String.fromCharCode(65+i)}`, order: i }))
     : [];
   return {
-    id, name: cfg.name, date: cfg.date,
+    id, eventType:"torneo", name: cfg.name, date: cfg.date,
     hasGroupStage: cfg.hasGroupStage,
     numberOfTeams: cfg.numberOfTeams,
     numberOfGroups: cfg.numberOfGroups || 0,
@@ -416,7 +429,169 @@ function newTournament(cfg) {
   };
 }
 
+/* ───────────────────────── Meet & Play ─────────────────────────
+   Evento amistoso: la gente se anota individual (no en pareja), con su nivel.
+   Se generan rondas armando parejas y rivales distintos cada vez, agrupando
+   por nivel para que los cruces sean parejos (con "puente" entre niveles
+   vecinos cuando hace falta para completar partidos de a 4). */
+function newMeetPlay(cfg) {
+  return {
+    id: uid(), eventType:"meetplay", name: cfg.name, date: cfg.date,
+    courts: cfg.courts, roundsCount: cfg.roundsCount, trackScore: !!cfg.trackScore,
+    registrations: [], rounds: [],
+    createdAt: Date.now(), updatedAt: Date.now(),
+  };
+}
+
+// Agrupa jugadores en "divisiones" de nivel: corta en cada salto de nivel presente,
+// y fusiona las divisiones con menos de 4 jugadores con la vecina de nivel más
+// próximo, hasta que todas tengan al menos 4 (o quede una sola si no alcanza).
+// Así un nivel 5 nunca comparte división con un nivel 7 salvo que los 6 hayan
+// hecho de puente fusionando ambos grupos.
+function buildDivisions(players) {
+  const sorted = [...players].sort((a, b) => a.level - b.level);
+  if (!sorted.length) return [];
+  const groups = [];
+  let cur = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].level !== sorted[i-1].level) { groups.push(cur); cur = []; }
+    cur.push(sorted[i]);
+  }
+  groups.push(cur);
+  let divisions = groups.map(g => ({ levels: [g[0].level], players: g }));
+  while (divisions.length > 1) {
+    const smallIdx = divisions.findIndex(d => d.players.length < 4);
+    if (smallIdx === -1) break;
+    const left = smallIdx > 0 ? smallIdx - 1 : null;
+    const right = smallIdx < divisions.length - 1 ? smallIdx + 1 : null;
+    let mergeWith;
+    if (left != null && right != null) {
+      const dl = Math.min(...divisions[smallIdx].levels) - Math.max(...divisions[left].levels);
+      const dr = Math.min(...divisions[right].levels) - Math.max(...divisions[smallIdx].levels);
+      mergeWith = dl <= dr ? left : right;
+    } else mergeWith = left != null ? left : right;
+    const a = Math.min(smallIdx, mergeWith), b = Math.max(smallIdx, mergeWith);
+    const merged = { levels:[...divisions[a].levels, ...divisions[b].levels], players:[...divisions[a].players, ...divisions[b].players] };
+    divisions.splice(a, 2, merged);
+  }
+  return divisions.map(d => d.players);
+}
+
+const pairKey = (a, b) => [a, b].sort().join("|");
+
+// Arma los partidos (de a 4, 2 vs 2) de UNA ronda para una división, evitando
+// repetir compañero (peso fuerte) y rival (peso más suave) respecto de las
+// rondas anteriores de esa división. Prueba muchas combinaciones al azar y
+// se queda con la de menor "costo" de repeticiones.
+//
+// El orden de partida no es un shuffle puro: usa el nivel + un ruido chico,
+// para que jugadores del mismo nivel se mezclen libremente entre sí, niveles
+// vecinos se mezclen con moderación (el "puente" cuando hace falta), y niveles
+// lejanos casi nunca terminen en el mismo grupo de 4 — incluso si quedaron en
+// la misma división grande por falta de gente suficiente en cada nivel.
+function roundForDivision(players, history, attempts = 120) {
+  const matchSize = 4;
+  const restNeeded = players.length % matchSize;
+  const minRest = Math.min(...players.map(p => history.rests[p.id] || 0));
+
+  let best = null, bestScore = Infinity;
+  for (let t = 0; t < attempts; t++) {
+    // Quién descansa: los que menos descansaron hasta ahora, con margen de
+    // variación (para poder ceder equidad si hace falta evitar un cruce de nivel).
+    const restRank = [...players].sort((a, b) => {
+      const d = (history.rests[a.id] || 0) - (history.rests[b.id] || 0);
+      return d !== 0 ? d : Math.random() - 0.5;
+    });
+    const poolSize = Math.min(players.length, restNeeded + Math.min(4, players.length - restNeeded));
+    const pool = restRank.slice(0, poolSize);
+    const resting = [...pool].sort(() => Math.random() - 0.5).slice(0, restNeeded);
+    const restingIds = new Set(resting.map(p => p.id));
+    const active = players.filter(p => !restingIds.has(p.id));
+
+    // Orden estricto por nivel, con empate al azar SOLO entre gente del mismo
+    // nivel. Cortar de a 4 sobre una lista ordenada así da, matemáticamente,
+    // el menor "spread" posible dentro de cada grupo — el puente entre niveles
+    // vecinos sale solo de dónde cae el corte, sin depender de la suerte.
+    const sorted = [...active].sort((a, b) => a.level - b.level || Math.random() - 0.5);
+
+    const matches = [];
+    let score = 0;
+    for (let i = 0; i < sorted.length; i += matchSize) {
+      const four = sorted.slice(i, i + matchSize);
+      const [p1,p2,p3,p4] = four;
+      const spread = Math.max(p1.level,p2.level,p3.level,p4.level) - Math.min(p1.level,p2.level,p3.level,p4.level);
+      const splits = [
+        [[p1,p2],[p3,p4]],
+        [[p1,p3],[p2,p4]],
+        [[p1,p4],[p2,p3]],
+      ];
+      let bestSplit = null, bestSplitScore = Infinity;
+      for (const [team, vs] of splits) {
+        const pc = history.partners[pairKey(team[0].id, team[1].id)] || 0;
+        const vc = history.partners[pairKey(vs[0].id, vs[1].id)] || 0;
+        let oc = 0;
+        team.forEach(a => vs.forEach(b => { oc += history.opponents[pairKey(a.id, b.id)] || 0; }));
+        const s = (pc + vc) * 10 + oc * 3;
+        if (s < bestSplitScore) { bestSplitScore = s; bestSplit = { team, vs }; }
+      }
+      matches.push(bestSplit);
+      score += bestSplitScore + spread * spread * 100; // el nivel manda: casi nunca debería ceder esto habiendo alternativa
+    }
+    resting.forEach(p => { score += ((history.rests[p.id] || 0) - minRest) * 4; });
+    if (score < bestScore) { bestScore = score; best = { matches, resting }; }
+  }
+  return best;
+}
+
+function initHistory(players) {
+  return { partners:{}, opponents:{}, rests: Object.fromEntries(players.map(p => [p.id, 0])) };
+}
+function applyRoundToHistory(history, round) {
+  round.matches.forEach(m => {
+    const [a,b] = m.team, [c,d] = m.vs;
+    history.partners[pairKey(a.id,b.id)] = (history.partners[pairKey(a.id,b.id)]||0) + 1;
+    history.partners[pairKey(c.id,d.id)] = (history.partners[pairKey(c.id,d.id)]||0) + 1;
+    [a,b].forEach(x => [c,d].forEach(y => { history.opponents[pairKey(x.id,y.id)] = (history.opponents[pairKey(x.id,y.id)]||0) + 1; }));
+  });
+  round.resting.forEach(p => { history.rests[p.id] = (history.rests[p.id]||0) + 1; });
+}
+
+// Genera TODAS las rondas de un Meet & Play a partir de sus inscriptos actuales.
+// Devuelve el arreglo `rounds` listo para guardar en el evento.
+function generateMeetPlayRounds(mp) {
+  const players = (mp.registrations || []).map(r => ({ id:r.id, name:r.player1Name, level:r.level }));
+  const divisions = buildDivisions(players);
+  const histories = divisions.map(initHistory);
+  const rounds = [];
+  for (let rn = 1; rn <= mp.roundsCount; rn++) {
+    const allMatches = [];
+    const allResting = [];
+    divisions.forEach((div, di) => {
+      const r = roundForDivision(div, histories[di]);
+      applyRoundToHistory(histories[di], r);
+      r.matches.forEach(m => allMatches.push({
+        id: uid(),
+        division: di,
+        team: [m.team[0].id, m.team[1].id],
+        vs: [m.vs[0].id, m.vs[1].id],
+        sets: [], status:"pending",
+      }));
+      r.resting.forEach(p => allResting.push(p.id));
+    });
+    // asignar número de cancha (cíclico) solo como etiqueta organizativa
+    allMatches.forEach((m, i) => { m.court = (i % mp.courts) + 1; });
+    rounds.push({ number: rn, matches: allMatches, resting: allResting });
+  }
+  return rounds;
+}
+
 function statusOf(t) {
+  if (t.eventType === "meetplay") {
+    if (!(t.registrations||[]).length) return "Sin inscriptos";
+    if (!t.rounds?.length) return "Inscripciones abiertas";
+    const allDone = t.rounds.every(r => r.matches.every(m => m.status === "completed"));
+    return allDone ? "Meet & Play finalizado" : "Rondas en curso";
+  }
   if (!t.teams.length) return "Configuración";
   if (t.ko) {
     const ko = deriveKO(t);
@@ -444,7 +619,7 @@ function deriveKO(t) {
     const ms = current.map(m => {
       const stored = results[m.id];
       const fresh = stored && stored.a === m.a && stored.b === m.b ? stored : null;
-      const isBye = (!m.a && !!m.b) || (!!m.a && !m.b);
+      const isBye = r === 0 && ((!m.a && !!m.b) || (!!m.a && !m.b));
       let winner = null, result = null;
       if (isBye) winner = m.a || m.b;
       else if (m.a && m.b && fresh && setsValid(fresh.sets)) {
@@ -655,6 +830,59 @@ function QRCanvas({ text, size = 260 }) {
 }
 
 /* ───────────────────────── wizard ───────────────────────── */
+// Primer paso al crear un evento: elegir qué tipo. Torneo sigue el flujo de
+// siempre; Meet & Play es el formato amistoso nuevo. Pensado para poder sumar
+// más tipos de evento el día de mañana sin tocar esto.
+function EventTypePicker({ onPick, onCancel }) {
+  return (
+    <div className="card">
+      <h3>¿Qué querés crear?</h3>
+      <div className="row" style={{ marginTop:14, alignItems:"stretch" }}>
+        <button className="opt" style={{ flex:1, textAlign:"left" }} onClick={() => onPick("torneo")}>
+          <b>Torneo</b>
+          <p className="sub" style={{ margin:"6px 0 0" }}>Grupos y/o llave de eliminación directa, por equipos.</p>
+        </button>
+        <button className="opt" style={{ flex:1, textAlign:"left" }} onClick={() => onPick("meetplay")}>
+          <b>Meet & Play</b>
+          <p className="sub" style={{ margin:"6px 0 0" }}>Evento amistoso: la gente se anota sola, y armamos rondas con parejas y rivales distintos, parejo por nivel.</p>
+        </button>
+      </div>
+      <div className="row" style={{ marginTop:16 }}>
+        <button className="btn ghost" onClick={onCancel}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+function MeetPlayWizard({ onCreate, onCancel }) {
+  const [f, setF] = useState({ name:"", date:new Date().toISOString().slice(0,10), courts:2, roundsCount:5, trackScore:true });
+  const set = (k,v) => setF(s => ({ ...s, [k]:v }));
+  const canCreate = f.name.trim().length > 0 && f.courts >= 1 && f.roundsCount >= 1;
+  return (
+    <div className="card">
+      <div className="eyebrow">Nuevo Meet & Play</div>
+      <h2 style={{ margin:"6px 0 16px" }}>Datos del evento</h2>
+      <div className="grid2">
+        <label className="f"><span>Nombre</span><input className="inp" value={f.name} onChange={e => set("name", e.target.value)} placeholder="Meet & Play de agosto" /></label>
+        <label className="f"><span>Fecha</span><input className="inp" type="date" value={f.date} onChange={e => set("date", e.target.value)} /></label>
+      </div>
+      <div className="grid3" style={{ marginTop:12 }}>
+        <label className="f"><span>Canchas disponibles</span><input className="inp mono" type="number" min="1" value={f.courts} onChange={e => set("courts", +e.target.value)} /></label>
+        <label className="f"><span>Cantidad de rondas</span><input className="inp mono" type="number" min="1" value={f.roundsCount} onChange={e => set("roundsCount", +e.target.value)} /></label>
+      </div>
+      <label className="row" style={{ marginTop:14, cursor:"pointer" }}>
+        <input type="checkbox" checked={f.trackScore} onChange={e => set("trackScore", e.target.checked)} />
+        <span>Llevar puntaje individual (suma de games a lo largo de todas las rondas)</span>
+      </label>
+      <p className="note">La gente se anota individual (no en pareja) con su nivel de Padel Connect. Las parejas y rivales de cada ronda se arman solos, buscando que todos jueguen con compañeros distintos y que los niveles sean parejos.</p>
+      <div className="row" style={{ marginTop:20, justifyContent:"space-between" }}>
+        <button className="btn ghost" onClick={onCancel}>Atrás</button>
+        <button className="btn ball" disabled={!canCreate} onClick={() => onCreate(newMeetPlay(f))}>Crear Meet & Play</button>
+      </div>
+    </div>
+  );
+}
+
 function Wizard({ onCreate, onCancel }) {
   const [step, setStep] = useState(0);
   const [f, setF] = useState({ name:"", date:new Date().toISOString().slice(0,10), hasGroupStage:true,
@@ -1003,6 +1231,159 @@ function RegistrationsTab({ t, save }) {
   );
 }
 
+/* ───────────────────────── Meet & Play — tabs ───────────────────────── */
+
+function MeetPlayRegistrationsTab({ t, save }) {
+  const [confirmDel, setConfirmDel] = useState(null); // { id, label }
+  const [confirmGen, setConfirmGen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const regs = t.registrations || [];
+  const base = typeof window !== "undefined" ? window.location.href.split("#")[0] : "";
+  const link = `${base}#inscribirse=${t.id}`;
+  const copy = () => navigator.clipboard?.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); });
+  const remove = id => save({ ...t, registrations: regs.filter(r => r.id !== id) });
+
+  const generate = () => {
+    const rounds = generateMeetPlayRounds(t);
+    save({ ...t, rounds });
+    setConfirmGen(false);
+  };
+
+  return (
+    <div className="card">
+      <h3>Inscripciones</h3>
+      <p className="sub">Compartí este link para que la gente se anote sola, con su nivel de Padel Connect. {regs.length} anotados.</p>
+      <div className="row" style={{ marginTop:10 }}>
+        <button className="btn primary sm" onClick={copy}>{copied ? "Link copiado" : "Copiar link de inscripción"}</button>
+      </div>
+
+      {!regs.length ? <p className="sub" style={{ marginTop:20 }}>Todavía no hay nadie anotado.</p> : (
+        <div className="list" style={{ marginTop:16 }}>
+          {regs.map(r => (
+            <div className="tcard" key={r.id}>
+              <div style={{ flex:1 }}>
+                <b>{r.player1Name}</b>
+                <div className="sub">Nivel {r.level} · {r.whatsapp}</div>
+              </div>
+              <button className="btn ghost sm" onClick={() => setConfirmDel({ id:r.id, label:r.player1Name })}>Borrar</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="row" style={{ marginTop:20 }}>
+        <button className="btn ball" disabled={regs.length < 4} onClick={() => t.rounds?.length ? setConfirmGen(true) : generate()}>
+          {t.rounds?.length ? "Regenerar rondas" : "Generar rondas"}
+        </button>
+      </div>
+      {regs.length > 0 && regs.length < 4 && <p className="sub">Hacen falta al menos 4 anotados para generar rondas.</p>}
+
+      <Confirm open={!!confirmDel} message={`Se borra la inscripción de "${confirmDel?.label}". ¿Deseás continuar?`}
+        confirmLabel="Borrar" onCancel={() => setConfirmDel(null)} onConfirm={() => { remove(confirmDel.id); setConfirmDel(null); }} />
+      <Confirm open={confirmGen} message="Esto vuelve a armar todas las rondas desde cero (se pierden los resultados ya cargados). ¿Deseás continuar?"
+        confirmLabel="Regenerar" onCancel={() => setConfirmGen(false)} onConfirm={generate} />
+    </div>
+  );
+}
+
+function RoundsTab({ t, save, readOnly }) {
+  const [open, setOpen] = useState(null); // { roundIdx, matchIdx }
+  const byId = Object.fromEntries((t.registrations || []).map(r => [r.id, r]));
+  const rounds = t.rounds || [];
+
+  const saveResult = (roundIdx, matchIdx, sets, winner) => {
+    const rounds2 = rounds.map((r, ri) => ri !== roundIdx ? r : {
+      ...r, matches: r.matches.map((m, mi) => mi !== matchIdx ? m : { ...m, sets, status:"completed" }),
+    });
+    save({ ...t, rounds: rounds2 });
+    setOpen(null);
+  };
+  const clearResult = (roundIdx, matchIdx) => {
+    const rounds2 = rounds.map((r, ri) => ri !== roundIdx ? r : {
+      ...r, matches: r.matches.map((m, mi) => mi !== matchIdx ? m : { ...m, sets:[], status:"pending" }),
+    });
+    save({ ...t, rounds: rounds2 });
+    setOpen(null);
+  };
+
+  if (!rounds.length) return (
+    <div className="card"><h3>Rondas</h3><p className="sub">Todavía no se generaron las rondas — andá a Inscripciones cuando estén todos anotados.</p></div>
+  );
+
+  const openMatch = open && rounds[open.roundIdx].matches[open.matchIdx];
+  const label = ids => ids.map(id => byId[id]?.name || byId[id]?.player1Name || "?").join(" / ");
+
+  return (
+    <div className="card">
+      <h3>Rondas</h3>
+      {rounds.map((r, ri) => (
+        <div key={r.number} style={{ marginTop:18 }}>
+          <h3 style={{ fontSize:16 }}>Ronda {r.number}</h3>
+          <div className="list" style={{ marginTop:8 }}>
+            {r.matches.map((m, mi) => {
+              const teamA = { name: label(m.team) };
+              const teamB = { name: label(m.vs) };
+              const done = m.sets?.length > 0;
+              return (
+                <div className="tcard" key={m.id} style={{ cursor: readOnly ? "default" : "pointer" }} onClick={() => !readOnly && setOpen({ roundIdx:ri, matchIdx:mi })}>
+                  <span className="chip ghost" style={{ flex:"none" }}>Cancha {m.court}</span>
+                  <div style={{ flex:1 }}>
+                    <b>{teamA.name}</b> <span className="sub">vs</span> <b>{teamB.name}</b>
+                    {done && <div className="sub">{m.sets.map(s => `${s.a}-${s.b}`).join(", ")}</div>}
+                  </div>
+                  {!readOnly && <span className="sub">{done ? "Editar" : "Cargar"}</span>}
+                </div>
+              );
+            })}
+          </div>
+          {r.resting.length > 0 && <p className="sub" style={{ marginTop:6 }}>Descansan: {label(r.resting)}</p>}
+        </div>
+      ))}
+      {open && (
+        <ResultModal match={openMatch} teamA={{ name: label(openMatch.team) }} teamB={{ name: label(openMatch.vs) }}
+          onSave={(sets, winner) => saveResult(open.roundIdx, open.matchIdx, sets, winner)}
+          onClear={() => clearResult(open.roundIdx, open.matchIdx)}
+          onClose={() => setOpen(null)} />
+      )}
+    </div>
+  );
+}
+
+function MeetPlayStandingsTab({ t }) {
+  const byId = Object.fromEntries((t.registrations || []).map(r => [r.id, r]));
+  const stats = {};
+  (t.registrations || []).forEach(r => { stats[r.id] = { id:r.id, name:r.player1Name, played:0, wins:0, losses:0, gf:0, gc:0 }; });
+
+  (t.rounds || []).forEach(r => r.matches.forEach(m => {
+    if (!m.sets?.length) return;
+    const w = winnerSide(m.sets);
+    const [gfA, gcA] = gamesOf(m.sets);
+    m.team.forEach(id => { const s = stats[id]; if (!s) return; s.played++; s.gf += gfA; s.gc += gcA; if (w === "a") s.wins++; else if (w === "b") s.losses++; });
+    m.vs.forEach(id => { const s = stats[id]; if (!s) return; s.played++; s.gf += gcA; s.gc += gfA; if (w === "b") s.wins++; else if (w === "a") s.losses++; });
+  }));
+
+  const rows = Object.values(stats).sort((a,b) => b.wins - a.wins || (b.gf-b.gc) - (a.gf-a.gc) || b.gf - a.gf);
+
+  return (
+    <div className="card">
+      <h3>Posiciones individuales</h3>
+      {!rows.length ? <p className="sub">Todavía no hay nada para mostrar.</p> : (
+        <div className="tblwrap">
+          <table>
+            <thead><tr><th>#</th><th>Jugador</th><th>PJ</th><th>PG</th><th>PP</th><th>GF</th><th>GC</th><th>DIF</th></tr></thead>
+            <tbody>{rows.map((r, i) => (
+              <tr key={r.id}>
+                <td>{i+1}</td><td>{r.name}</td><td>{r.played}</td><td>{r.wins}</td><td>{r.losses}</td>
+                <td>{r.gf}</td><td>{r.gc}</td><td>{r.gf-r.gc > 0 ? `+${r.gf-r.gc}` : r.gf-r.gc}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GroupsTab({ t, save, readOnly }) {
   const [open, setOpen] = useState(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
@@ -1278,42 +1659,11 @@ function KnockoutTab({ t, save, readOnly }) {
 }
 
 /* --- payload público comprimido (sin fotos) --- */
-function toPublic(t) {
-  const gi = Object.fromEntries(t.groups.map((g,i) => [g.id, i]));
-  const ti = Object.fromEntries(t.teams.map((x,i) => [x.id, i]));
-  return {
-    n: t.name, d: t.date, g: t.groups.map(g => g.name),
-    q: t.qualifiersPerGroup, h: t.hasGroupStage ? 1 : 0,
-    t: t.teams.map(x => [x.name, x.player1Name, x.player2Name, x.groupId != null ? gi[x.groupId] : -1]),
-    m: t.matches.filter(m => m.phase === "group").map(m => [gi[m.groupId], ti[m.teamAId], ti[m.teamBId], (m.sets||[]).map(s => [s.a, s.b, s.tb?1:0])]),
-    k: t.ko ? { s: t.ko.size, p: t.ko.pairs.map(p => p.map(x => x == null ? -1 : ti[x])),
-      r: Object.entries(t.ko.results).map(([id,v]) => [id, v.a==null?-1:ti[v.a], v.b==null?-1:ti[v.b], v.sets.map(s => [s.a, s.b, s.tb?1:0])]) } : null,
-  };
-}
-function fromPublic(p) {
-  const groups = (p.g || []).map((n,i) => ({ id:`g${i}`, name:n, order:i }));
-  const teams = p.t.map((x,i) => ({ id:`t${i}`, name:x[0], player1Name:x[1], player2Name:x[2], groupId: x[3] >= 0 ? `g${x[3]}` : null, seed:i+1 }));
-  const matches = (p.m || []).map((m,i) => {
-    const sets = m[3].map(s => ({ a:s[0], b:s[1], ...(s[2] ? { tb:true } : {}) }));
-    const w = winnerSide(sets);
-    return { id:`m${i}`, phase:"group", groupId:`g${m[0]}`, teamAId:`t${m[1]}`, teamBId:`t${m[2]}`, sets,
-      winnerTeamId: w ? (w === "a" ? `t${m[1]}` : `t${m[2]}`) : null, status: w ? "completed" : "pending" };
-  });
-  const ko = p.k ? { size:p.k.s, pairs:p.k.p.map(pr => pr.map(x => x < 0 ? null : `t${x}`)),
-    results: Object.fromEntries(p.k.r.map(r => [r[0], { a:r[1]<0?null:`t${r[1]}`, b:r[2]<0?null:`t${r[2]}`, sets:r[3].map(s => ({a:s[0],b:s[1], ...(s[2]?{tb:true}:{})})) }])) } : null;
-  return { id:"public", name:p.n, date:p.d, hasGroupStage:!!p.h, numberOfTeams:teams.length,
-    numberOfGroups:groups.length, teamsPerGroup:0, qualifiersPerGroup:p.q||0,
-    knockoutStartRound: ko?.size || 0, allowByes:true, groups, teams, matches, ko };
-}
-
 function PublicTab({ t }) {
   const [copied, setCopied] = useState(false);
   const cvRef = useRef(null);
-  const payload = useMemo(() => b64e(JSON.stringify(toPublic(t))), [t]);
   const base = typeof window !== "undefined" ? window.location.href.split("#")[0] : "";
-  const link = `${base}#t=${payload}`;
-  const bytes = new TextEncoder().encode(link).length;
-  const tooBig = bytes > QR_MAX;
+  const link = `${base}#ver=${t.id}`;
 
   const download = () => {
     const cv = cvRef.current?.querySelector("canvas");
@@ -1328,21 +1678,14 @@ function PublicTab({ t }) {
   return (
     <div className="card">
       <h3>Vista pública</h3>
-      <p className="sub">El link lleva el torneo entero adentro: quien lo abre ve resultados, tablas y llave, sin poder editar nada. Las fotos no viajan en el link.</p>
+      <p className="sub">Este link muestra el torneo en vivo — cada vez que alguien lo abre trae el estado actual de tu Sheet (resultados, tablas, llave, y ahora también las fotos). No hay que regenerarlo nunca: es siempre el mismo, y solo se actualiza al abrir o refrescar la página.</p>
       <div className="row" style={{ alignItems:"flex-start", gap:24, marginTop:16 }}>
-        <div ref={cvRef}>{!tooBig && <QRCanvas text={link} />}</div>
+        <div ref={cvRef}><QRCanvas text={link} /></div>
         <div style={{ flex:1, minWidth:240 }}>
-          {tooBig
-            ? <div className="warn">Este torneo pesa {bytes} bytes y no entra en un código QR (el máximo es {QR_MAX}). Exportá el JSON desde Configuración y compartilo así.</div>
-            : <div className="note">Peso del link: {bytes} de {QR_MAX} bytes.</div>}
           <div className="row" style={{ marginTop:12 }}>
             <button className="btn primary" onClick={copy}>{copied ? "Link copiado" : "Copiar link público"}</button>
-            <button className="btn ghost" disabled={tooBig} onClick={download}>Descargar QR</button>
+            <button className="btn ghost" onClick={download}>Descargar QR</button>
           </div>
-          <p className="sub" style={{ marginTop:14 }}>
-            El link es una foto del torneo en este momento. Si cargás más resultados, generá el QR de nuevo.
-            Para que se actualice solo en el celular de todos, hace falta la base de datos online de la versión 2.
-          </p>
         </div>
       </div>
     </div>
@@ -1405,9 +1748,10 @@ function RegisterView({ id }) {
   if (loading) return shell(<p className="sub">Cargando…</p>);
   if (!t) return shell(<><h3>No encontramos este torneo</h3><p className="sub">Puede que el link esté mal, o que el torneo se haya borrado.</p></>);
 
+  const isMeetPlay = t.eventType === "meetplay";
   const regs = t.registrations || [];
-  const activeOccupied = t.teams.length + regs.filter(r => r.status !== "waitlist").length;
-  const full = activeOccupied >= t.numberOfTeams;
+  const activeOccupied = isMeetPlay ? 0 : t.teams.length + regs.filter(r => r.status !== "waitlist").length;
+  const full = isMeetPlay ? false : activeOccupied >= t.numberOfTeams;
 
   if (done) return shell(waitlisted
     ? <><h3>Quedaste en la lista de espera</h3><p className="sub">El torneo ya tiene el cupo completo. Si se libera un lugar te avisamos por WhatsApp.</p></>
@@ -1415,11 +1759,12 @@ function RegisterView({ id }) {
 
   const submit = async () => {
     if (!p1.trim()) return setErr("Falta tu nombre.");
-    if (mode === "pair" && !p2.trim()) return setErr("Falta el nombre de tu compañero/a.");
+    if (!isMeetPlay && mode === "pair" && !p2.trim()) return setErr("Falta el nombre de tu compañero/a.");
     if (!level) return setErr("Elegí tu nivel.");
     if (!whatsapp.trim()) return setErr("Falta tu WhatsApp.");
     setSending(true); setErr("");
-    const reg = { id: uid(), mode, player1Name:p1.trim(), player2Name: mode==="pair" ? p2.trim() : "", level, whatsapp:whatsapp.trim(), createdAt: Date.now() };
+    const reg = { id: uid(), mode: isMeetPlay ? "individual" : mode, player1Name:p1.trim(),
+      player2Name: (!isMeetPlay && mode === "pair") ? p2.trim() : "", level, whatsapp:whatsapp.trim(), createdAt: Date.now() };
     try {
       const res = await fetch(BACKEND_URL, {
         method: "POST",
@@ -1440,15 +1785,17 @@ function RegisterView({ id }) {
   return shell(
     <>
       <h3>Anotate a {t.name}</h3>
-      <p className="sub">{t.date} · {full ? "cupo completo" : `${t.numberOfTeams - activeOccupied} lugares libres de ${t.numberOfTeams}`}</p>
+      <p className="sub">{t.date}{!isMeetPlay && (full ? " · cupo completo" : ` · ${t.numberOfTeams - activeOccupied} lugares libres de ${t.numberOfTeams}`)}</p>
       {full && <div className="note">El cupo ya se completó, pero podés anotarte en la <b>lista de espera</b> — te avisamos por WhatsApp si se libera un lugar.</div>}
-      <div className="row" style={{ marginTop:12 }}>
-        <button type="button" className={`btn ${mode==="pair" ? "primary" : "ghost"} sm`} onClick={() => setMode("pair")}>Tengo compañero/a</button>
-        <button type="button" className={`btn ${mode==="solo" ? "primary" : "ghost"} sm`} onClick={() => setMode("solo")}>Busco compañero/a</button>
-      </div>
+      {!isMeetPlay && (
+        <div className="row" style={{ marginTop:12 }}>
+          <button type="button" className={`btn ${mode==="pair" ? "primary" : "ghost"} sm`} onClick={() => setMode("pair")}>Tengo compañero/a</button>
+          <button type="button" className={`btn ${mode==="solo" ? "primary" : "ghost"} sm`} onClick={() => setMode("solo")}>Busco compañero/a</button>
+        </div>
+      )}
       <div className="grid3" style={{ marginTop:14 }}>
         <label className="f"><span>Tu nombre</span><input className="inp" value={p1} onChange={e => setP1(e.target.value)} placeholder="Nombre y apellido" /></label>
-        {mode === "pair" && <label className="f"><span>Compañero/a</span><input className="inp" value={p2} onChange={e => setP2(e.target.value)} placeholder="Nombre y apellido" /></label>}
+        {!isMeetPlay && mode === "pair" && <label className="f"><span>Compañero/a</span><input className="inp" value={p2} onChange={e => setP2(e.target.value)} placeholder="Nombre y apellido" /></label>}
         <label className="f"><span>Tu WhatsApp</span><input className="inp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="+41 78 ..." /></label>
       </div>
       <h3 style={{ marginTop:24 }}>Tu nivel</h3>
@@ -1461,10 +1808,30 @@ function RegisterView({ id }) {
 }
 
 /* ───────────────────────── vista pública read-only ───────────────────────── */
-function ReadOnlyView({ t, onExit }) {
-  const TABS = ["Equipos", "Grupos", "Posiciones", "Knockouts"].filter(x => t.hasGroupStage || (x !== "Grupos" && x !== "Posiciones"));
-  const [tab, setTab] = useState(TABS[t.hasGroupStage ? 1 : 0]);
-  const ko = t.ko ? deriveKO(t) : null;
+function ReadOnlyView({ id, onExit }) {
+  const [t, setT] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { (async () => { setT(await store.get(KEY(id))); setLoading(false); })(); }, [id]);
+
+  if (loading) return (
+    <div className="pista-app"><style>{CSS}</style><div className="wrap"><p className="sub">Cargando…</p></div></div>
+  );
+  if (!t) return (
+    <div className="pista-app"><style>{CSS}</style><div className="wrap"><div className="card">
+      <h3>No encontramos este torneo</h3><p className="sub">Puede que el link esté mal, o que el torneo se haya borrado.</p>
+    </div></div></div>
+  );
+
+  const TABS = t.eventType === "meetplay"
+    ? ["Rondas", ...(t.trackScore ? ["Posiciones"] : [])]
+    : ["Equipos", "Grupos", "Posiciones", "Knockouts"].filter(x => t.hasGroupStage || (x !== "Grupos" && x !== "Posiciones"));
+  return <ReadOnlyBody t={t} TABS={TABS} onExit={onExit} />;
+}
+
+function ReadOnlyBody({ t, TABS, onExit }) {
+  const [tab, setTab] = useState(TABS[0]);
+  const isMeetPlay = t.eventType === "meetplay";
+  const ko = !isMeetPlay && t.ko ? deriveKO(t) : null;
   return (
     <div className="pista-app">
       <style>{CSS}</style>
@@ -1486,12 +1853,23 @@ function ReadOnlyView({ t, onExit }) {
         </div>
       </div>
       <div className="wrap">
-        {tab === "Equipos" && <TeamsTab t={t} save={()=>{}} readOnly />}
-        {tab === "Grupos" && <GroupsTab t={t} save={()=>{}} readOnly />}
-        {tab === "Posiciones" && <StandingsTab t={t} />}
-        {tab === "Knockouts" && <KnockoutTab t={t} save={()=>{}} readOnly />}
+        {isMeetPlay ? (
+          <>
+            {tab === "Rondas" && <RoundsTab t={t} save={()=>{}} readOnly />}
+            {tab === "Posiciones" && <MeetPlayStandingsTab t={t} />}
+          </>
+        ) : (
+          <>
+            {tab === "Equipos" && <TeamsTab t={t} save={()=>{}} readOnly />}
+            {tab === "Grupos" && <GroupsTab t={t} save={()=>{}} readOnly />}
+            {tab === "Posiciones" && <StandingsTab t={t} />}
+            {tab === "Knockouts" && <KnockoutTab t={t} save={()=>{}} readOnly />}
+          </>
+        )}
         <div className="row" style={{ marginTop:24, justifyContent:"center" }}>
-          <button className="btn ghost sm" onClick={onExit}>Salir de la vista pública</button>
+          {onExit
+            ? <button className="btn ghost sm" onClick={onExit}>Salir de la vista pública</button>
+            : <p className="sub">Volvé a abrir este link cuando quieras para ver el estado más reciente.</p>}
         </div>
       </div>
     </div>
@@ -1500,13 +1878,13 @@ function ReadOnlyView({ t, onExit }) {
 
 /* ───────────────────────── app ───────────────────────── */
 function App() {
-  const [publicT, setPublicT] = useState(null);
+  const [viewId, setViewId] = useState(null);
   const [registerId, setRegisterId] = useState(null);
   const [unlocked, setUnlocked] = useState(() => viewAuth.get());
   const [index, setIndex] = useState([]);
   const [t, setT] = useState(null);
   const [tab, setTab] = useState("Grupos");
-  const [wizard, setWizard] = useState(false);
+  const [wizard, setWizard] = useState(null); // null | "picker" | "torneo" | "meetplay"
   const [saved, setSaved] = useState("");
   const [loading, setLoading] = useState(true);
   const [pendingDelete, setPendingDelete] = useState(null); // { id, name }
@@ -1518,9 +1896,7 @@ function App() {
 
   useEffect(() => {
     const h = window.location.hash;
-    if (h.startsWith("#t=")) {
-      try { setPublicT(fromPublic(JSON.parse(b64d(h.slice(3))))); setLoading(false); return; } catch {}
-    }
+    if (h.startsWith("#ver=")) { setViewId(decodeURIComponent(h.slice(5))); setLoading(false); return; }
     if (h.startsWith("#inscribirse=")) { setRegisterId(decodeURIComponent(h.slice(13))); setLoading(false); return; }
     (async () => { if (store.ok()) setIndex(await store.get(IDX, [])); setLoading(false); })();
   }, []);
@@ -1546,7 +1922,10 @@ function App() {
 
   const save = next => { const n = { ...next, updatedAt: Date.now() }; setT(n); persist(n); };
 
-  const openT = async id => { const x = await store.get(KEY(id)); if (x) { setT(x); setTab(x.hasGroupStage ? "Grupos" : "Knockouts"); } };
+  const openT = async id => { const x = await store.get(KEY(id)); if (x) {
+    setT(x);
+    setTab(x.eventType === "meetplay" ? "Inscripciones" : (x.hasGroupStage ? "Grupos" : "Knockouts"));
+  } };
   const requestDelete = (id, name) => setPendingDelete({ id, name });
   const confirmDelete = async () => {
     const id = pendingDelete.id; setPendingDelete(null);
@@ -1569,11 +1948,13 @@ function App() {
     fr.onload = () => { try { const x = JSON.parse(fr.result); x.id = uid(); setImportError(""); save(x); setTab(x.hasGroupStage ? "Grupos" : "Knockouts"); }
       catch { setImportError("Ese archivo no es un torneo válido."); } }; fr.readAsText(file); };
 
-  if (publicT) return <ReadOnlyView t={publicT} onExit={() => { window.location.hash = ""; setPublicT(null); }} />;
+  if (viewId) return <ReadOnlyView id={viewId} onExit={() => { window.location.hash = ""; setViewId(null); }} />;
   if (registerId) return <RegisterView id={registerId} />;
   if (!unlocked) return <Gate onUnlock={() => setUnlocked(true)} />;
 
-  const TABS = ["Configuración","Equipos","Inscripciones","Grupos","Posiciones","Knockouts","Vista pública"];
+  const TABS = !t ? [] : t.eventType === "meetplay"
+    ? ["Configuración","Inscripciones","Rondas", ...(t.trackScore ? ["Posiciones"] : []), "Vista pública"]
+    : ["Configuración","Equipos","Inscripciones","Grupos","Posiciones","Knockouts","Vista pública"];
 
   return (
     <div className="pista-app">
@@ -1602,7 +1983,7 @@ function App() {
                 const newRegs = x === "Inscripciones" ? (t.registrations||[]).filter(r => r.createdAt > seenAt).length : 0;
                 return (
                   <button key={x} role="tab" aria-selected={tab===x} className="tab"
-                    disabled={(x==="Grupos"||x==="Posiciones") && !t.hasGroupStage}
+                    disabled={t.eventType !== "meetplay" && (x==="Grupos"||x==="Posiciones") && !t.hasGroupStage}
                     onClick={() => {
                       setTab(x);
                       if (x === "Inscripciones") { const now = Date.now(); try { localStorage.setItem(`pista:seen:${t.id}`, String(now)); } catch {} setSeenAt(now); }
@@ -1627,7 +2008,7 @@ function App() {
                 <div className="row">
                   <button className="btn ghost sm" onClick={() => fileRef.current?.click()}>Importar</button>
                   <input ref={fileRef} type="file" accept="application/json" hidden onChange={e => e.target.files?.[0] && importT(e.target.files[0])} />
-                  <button className="btn ball" onClick={() => setWizard(true)}>Crear torneo</button>
+                  <button className="btn ball" onClick={() => setWizard("picker")}>Crear evento</button>
                 </div>
               </div>
               {!store.ok() && <div className="warn">No hay almacenamiento disponible acá. Podés trabajar igual, pero exportá el JSON antes de cerrar.</div>}
@@ -1652,9 +2033,41 @@ function App() {
           </>
         )}
 
-        {wizard && <Wizard onCancel={() => setWizard(false)} onCreate={x => { setWizard(false); save(x); setTab("Equipos"); }} />}
+        {wizard === "picker" && <EventTypePicker onCancel={() => setWizard(null)} onPick={setWizard} />}
+        {wizard === "torneo" && <Wizard onCancel={() => setWizard(null)} onCreate={x => { setWizard(null); save(x); setTab("Equipos"); }} />}
+        {wizard === "meetplay" && <MeetPlayWizard onCancel={() => setWizard(null)} onCreate={x => { setWizard(null); save(x); setTab("Inscripciones"); }} />}
 
-        {t && tab === "Configuración" && (
+        {t && tab === "Configuración" && t.eventType === "meetplay" && (
+          <div className="card">
+            <h3>Configuración</h3>
+            <div className="grid2">
+              <label className="f"><span>Nombre</span><input className="inp" value={t.name} onChange={e => save({ ...t, name:e.target.value })} /></label>
+              <label className="f"><span>Fecha</span><input className="inp" type="date" value={t.date} onChange={e => save({ ...t, date:e.target.value })} /></label>
+            </div>
+            <div className="grid3" style={{ marginTop:12 }}>
+              <label className="f"><span>Canchas</span><input className="inp mono" type="number" min="1" value={t.courts} onChange={e => save({ ...t, courts:+e.target.value })} /></label>
+              <label className="f"><span>Rondas</span><input className="inp mono" type="number" min="1" value={t.roundsCount} onChange={e => save({ ...t, roundsCount:+e.target.value })} /></label>
+            </div>
+            <label className="row" style={{ marginTop:12, cursor:"pointer" }}>
+              <input type="checkbox" checked={t.trackScore} onChange={e => save({ ...t, trackScore:e.target.checked })} />
+              <span>Llevar puntaje individual</span>
+            </label>
+            <div className="tblwrap" style={{ marginTop:12 }}>
+              <table>
+                <tbody>
+                  <tr><td style={{textAlign:"left",fontFamily:"var(--body)"}}>Anotados</td><td style={{textAlign:"left"}}>{(t.registrations||[]).length}</td></tr>
+                  <tr><td style={{textAlign:"left",fontFamily:"var(--body)"}}>Estado</td><td style={{textAlign:"left"}}>{statusOf(t)}</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="row" style={{ marginTop:16 }}>
+              <button className="btn ghost" onClick={exportT}>Exportar evento</button>
+              <button className="btn danger" onClick={() => requestDelete(t.id, t.name)}>Borrar evento</button>
+            </div>
+          </div>
+        )}
+
+        {t && tab === "Configuración" && t.eventType !== "meetplay" && (
           <div className="card">
             <h3>Configuración</h3>
             <div className="grid2">
@@ -1680,12 +2093,23 @@ function App() {
           </div>
         )}
 
-        {t && tab === "Equipos" && <TeamsTab t={t} save={save} />}
-        {t && tab === "Inscripciones" && <RegistrationsTab t={t} save={save} />}
-        {t && tab === "Grupos" && <GroupsTab t={t} save={save} />}
-        {t && tab === "Posiciones" && <StandingsTab t={t} />}
-        {t && tab === "Knockouts" && <KnockoutTab t={t} save={save} />}
-        {t && tab === "Vista pública" && <PublicTab t={t} />}
+        {t && t.eventType === "meetplay" ? (
+          <>
+            {tab === "Inscripciones" && <MeetPlayRegistrationsTab t={t} save={save} />}
+            {tab === "Rondas" && <RoundsTab t={t} save={save} />}
+            {tab === "Posiciones" && <MeetPlayStandingsTab t={t} />}
+            {tab === "Vista pública" && <PublicTab t={t} />}
+          </>
+        ) : (
+          <>
+            {t && tab === "Equipos" && <TeamsTab t={t} save={save} />}
+            {t && tab === "Inscripciones" && <RegistrationsTab t={t} save={save} />}
+            {t && tab === "Grupos" && <GroupsTab t={t} save={save} />}
+            {t && tab === "Posiciones" && <StandingsTab t={t} />}
+            {t && tab === "Knockouts" && <KnockoutTab t={t} save={save} />}
+            {t && tab === "Vista pública" && <PublicTab t={t} />}
+          </>
+        )}
       </div>
       <Confirm open={!!pendingDelete} message={`Se borra "${pendingDelete?.name}" y todos sus resultados. ¿Deseás continuar?`}
         confirmLabel="Borrar" onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} />
