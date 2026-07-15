@@ -157,6 +157,10 @@ tr.qual td:first-child{box-shadow:inset 3px 0 0 var(--pelota);color:var(--tinta)
 .levelcard.sel .lvnum{background:var(--pista)}
 .lvname{font-family:var(--display);font-weight:700;font-size:15px;margin-bottom:3px}
 .lvdesc{font-size:12px;color:var(--gris);line-height:1.35}
+.lvhalf{color:var(--pista);font-family:var(--mono);font-size:12px;margin-left:4px}
+.lvhalfbtn{flex:none;align-self:flex-start;width:24px;height:24px;border-radius:50%;border:1px solid var(--linea);background:var(--papel);color:var(--gris);font-family:var(--mono);font-weight:700;cursor:pointer;display:grid;place-items:center;line-height:1}
+.lvhalfbtn:hover{border-color:var(--pista);color:var(--pista)}
+.lvhalfbtn.sel{background:var(--pista);border-color:var(--pista);color:var(--pelota)}
 .tabbadge{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:9px;background:var(--falta);color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;vertical-align:middle}
 .champion{background:var(--pista);color:#fff;border-radius:4px;padding:26px 20px;text-align:center;margin-top:16px}
 .champion .nm2{font-family:var(--display);font-size:clamp(32px,6vw,58px);font-weight:800;text-transform:uppercase;
@@ -501,17 +505,16 @@ function roundForDivision(players, history, attempts = 120) {
   const restNeeded = players.length % matchSize;
   const minRest = Math.min(...players.map(p => history.rests[p.id] || 0));
 
+  // Quién PUEDE descansar esta ronda: nadie puede descansar más de una vez
+  // por encima del que menos descansó — regla dura, no un puntaje que el
+  // nivel le pueda ganar. Mejor un partido desparejo alguna vez que dejar a
+  // alguien afuera siempre solo porque su nivel no combina bien con el resto.
+  let allowed = players.filter(p => (history.rests[p.id] || 0) <= minRest + 1);
+  if (allowed.length < restNeeded) allowed = players; // salvavidas, no debería pasar
+
   let best = null, bestScore = Infinity;
   for (let t = 0; t < attempts; t++) {
-    // Quién descansa: los que menos descansaron hasta ahora, con margen de
-    // variación (para poder ceder equidad si hace falta evitar un cruce de nivel).
-    const restRank = [...players].sort((a, b) => {
-      const d = (history.rests[a.id] || 0) - (history.rests[b.id] || 0);
-      return d !== 0 ? d : Math.random() - 0.5;
-    });
-    const poolSize = Math.min(players.length, restNeeded + Math.min(4, players.length - restNeeded));
-    const pool = restRank.slice(0, poolSize);
-    const resting = [...pool].sort(() => Math.random() - 0.5).slice(0, restNeeded);
+    const resting = [...allowed].sort(() => Math.random() - 0.5).slice(0, restNeeded);
     const restingIds = new Set(resting.map(p => p.id));
     const active = players.filter(p => !restingIds.has(p.id));
 
@@ -545,7 +548,7 @@ function roundForDivision(players, history, attempts = 120) {
       matches.push(bestSplit);
       score += bestSplitScore + spread * spread * 100; // el nivel manda: casi nunca debería ceder esto habiendo alternativa
     }
-    resting.forEach(p => { score += ((history.rests[p.id] || 0) - minRest) * 4; });
+    resting.forEach(p => { score += ((history.rests[p.id] || 0) - minRest) * 8; }); // desempate suave entre los permitidos
     if (score < bestScore) { bestScore = score; best = { matches, resting }; }
   }
   return best;
@@ -681,15 +684,22 @@ const PADEL_LEVELS = [
 function LevelPicker({ value, onChange }) {
   return (
     <div className="levels">
-      {PADEL_LEVELS.map(lv => (
-        <button key={lv.n} type="button" className={`levelcard ${value===lv.n ? "sel" : ""}`} onClick={() => onChange(lv.n)}>
-          <div className="lvnum">{lv.n}</div>
-          <div>
-            <div className="lvname">{lv.name}</div>
-            <div className="lvdesc">{lv.desc}</div>
+      {PADEL_LEVELS.map(lv => {
+        const isWhole = value === lv.n, isHalf = value === lv.n + 0.5;
+        return (
+          <div key={lv.n} className={`levelcard ${isWhole || isHalf ? "sel" : ""}`} role="button" tabIndex={0}
+            onClick={() => onChange(lv.n)} onKeyDown={e => (e.key === "Enter" || e.key === " ") && onChange(lv.n)}>
+            <div className="lvnum">{lv.n}</div>
+            <div style={{ flex:1 }}>
+              <div className="lvname">{lv.name}{isHalf && <span className="lvhalf">.5</span>}</div>
+              <div className="lvdesc">{lv.desc}</div>
+            </div>
+            <button type="button" className={`lvhalfbtn ${isHalf ? "sel" : ""}`}
+              onClick={e => { e.stopPropagation(); onChange(lv.n + 0.5); }}
+              title={`Anotarme como ${lv.n}.5 (justo en el medio con el siguiente nivel)`}>+</button>
           </div>
-        </button>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1245,16 +1255,29 @@ function MeetPlayRegistrationsTab({ t, save }) {
   const [confirmDel, setConfirmDel] = useState(null); // { id, label }
   const [confirmGen, setConfirmGen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(null); // { id, player1Name, level, sex }
   const regs = t.registrations || [];
   const base = typeof window !== "undefined" ? window.location.href.split("#")[0] : "";
   const link = `${base}#inscribirse=${t.id}`;
   const copy = () => navigator.clipboard?.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); });
   const remove = id => save({ ...t, registrations: regs.filter(r => r.id !== id) });
+  const saveEdit = () => {
+    save({ ...t, registrations: regs.map(r => r.id === editing.id ? { ...r, player1Name: editing.player1Name, level: editing.level, sex: editing.sex } : r) });
+    setEditing(null);
+  };
 
   const generate = () => {
     const rounds = generateMeetPlayRounds(t);
     save({ ...t, rounds });
     setConfirmGen(false);
+  };
+
+  const RANDOM_NAMES = ["Lucas Gómez","Martina Díaz","Franco Silva","Sofía Romero","Nicolás Fernández","Valentina López","Tomás Ruiz","Camila Torres","Agustín Molina","Julieta Castro"];
+  const addRandom = () => {
+    const name = RANDOM_NAMES[Math.floor(Math.random()*RANDOM_NAMES.length)] + " " + Math.floor(Math.random()*90+10);
+    const reg = { id: uid(), mode:"individual", player1Name:name, player2Name:"", level: Math.floor(Math.random()*10)+1,
+      sex: Math.random()<0.5 ? "M" : "F", whatsapp:"+41 7"+Math.floor(Math.random()*10000000), createdAt: Date.now() };
+    save({ ...t, registrations: [...regs, reg] });
   };
 
   return (
@@ -1263,16 +1286,33 @@ function MeetPlayRegistrationsTab({ t, save }) {
       <p className="sub">Compartí este link para que la gente se anote sola, con su nivel de Padel Connect. {regs.length} anotados.</p>
       <div className="row" style={{ marginTop:10 }}>
         <button className="btn primary sm" onClick={copy}>{copied ? "Link copiado" : "Copiar link de inscripción"}</button>
+        <button className="btn ghost sm" onClick={addRandom}>+ Agregar jugador random (test)</button>
       </div>
 
       {!regs.length ? <p className="sub" style={{ marginTop:20 }}>Todavía no hay nadie anotado.</p> : (
         <div className="list" style={{ marginTop:16 }}>
-          {regs.map(r => (
+          {regs.map(r => editing?.id === r.id ? (
+            <div className="tcard" key={r.id} style={{ flexDirection:"column", alignItems:"stretch", gap:10 }}>
+              <div className="grid2">
+                <label className="f"><span>Nombre</span><input className="inp" value={editing.player1Name} onChange={e => setEditing(x => ({ ...x, player1Name:e.target.value }))} /></label>
+                <label className="f"><span>Nivel</span><input className="inp mono" type="number" min="1" max="10" step="0.5" value={editing.level} onChange={e => setEditing(x => ({ ...x, level:+e.target.value }))} /></label>
+              </div>
+              <div className="row">
+                <button type="button" className={`btn ${editing.sex==="M" ? "primary" : "ghost"} sm`} onClick={() => setEditing(x => ({ ...x, sex:"M" }))}>Hombre</button>
+                <button type="button" className={`btn ${editing.sex==="F" ? "primary" : "ghost"} sm`} onClick={() => setEditing(x => ({ ...x, sex:"F" }))}>Mujer</button>
+              </div>
+              <div className="row">
+                <button className="btn primary sm" onClick={saveEdit}>Guardar</button>
+                <button className="btn ghost sm" onClick={() => setEditing(null)}>Cancelar</button>
+              </div>
+            </div>
+          ) : (
             <div className="tcard" key={r.id}>
               <div style={{ flex:1 }}>
                 <b>{r.player1Name}</b>
                 <div className="sub">Nivel {r.level} · {r.sex === "M" ? "Hombre" : r.sex === "F" ? "Mujer" : "—"} · {r.whatsapp}</div>
               </div>
+              <button className="btn ghost sm" onClick={() => setEditing({ id:r.id, player1Name:r.player1Name, level:r.level, sex:r.sex||null })}>Editar</button>
               <button className="btn ghost sm" onClick={() => setConfirmDel({ id:r.id, label:r.player1Name })}>Borrar</button>
             </div>
           ))}
@@ -1296,6 +1336,7 @@ function MeetPlayRegistrationsTab({ t, save }) {
 
 function RoundsTab({ t, save, readOnly }) {
   const [open, setOpen] = useState(null); // { roundIdx, matchIdx }
+  const [confirmRandom, setConfirmRandom] = useState(false);
   const byId = Object.fromEntries((t.registrations || []).map(r => [r.id, r]));
   const rounds = t.rounds || [];
 
@@ -1313,6 +1354,12 @@ function RoundsTab({ t, save, readOnly }) {
     save({ ...t, rounds: rounds2 });
     setOpen(null);
   };
+  const randomizeAll = () => {
+    const rndSet = () => { let a = Math.floor(Math.random()*7), b = Math.floor(Math.random()*7); if (a===b) b = a>0?a-1:a+1; return { a, b }; };
+    const rounds2 = rounds.map(r => ({ ...r, matches: r.matches.map(m => m.sets?.length ? m : { ...m, sets:[rndSet()], status:"completed" }) }));
+    save({ ...t, rounds: rounds2 });
+    setConfirmRandom(false);
+  };
 
   if (!rounds.length) return (
     <div className="card"><h3>Rondas</h3><p className="sub">Todavía no se generaron las rondas — andá a Inscripciones cuando estén todos anotados.</p></div>
@@ -1323,7 +1370,10 @@ function RoundsTab({ t, save, readOnly }) {
 
   return (
     <div className="card">
-      <h3>Rondas</h3>
+      <div className="row" style={{ justifyContent:"space-between" }}>
+        <h3>Rondas</h3>
+        {!readOnly && <button className="btn ghost sm" onClick={() => setConfirmRandom(true)}>Generar resultados random (test)</button>}
+      </div>
       {rounds.map((r, ri) => (
         <div key={r.number} style={{ marginTop:18 }}>
           <h3 style={{ fontSize:16 }}>Ronda {r.number}</h3>
@@ -1347,6 +1397,8 @@ function RoundsTab({ t, save, readOnly }) {
           {r.resting.length > 0 && <p className="sub" style={{ marginTop:6 }}>Descansan: {label(r.resting)}</p>}
         </div>
       ))}
+      <Confirm open={confirmRandom} message="Esto completa con resultados al azar todos los partidos que todavía no tengan uno cargado (los que ya tienen resultado quedan igual). Es para testear. ¿Deseás continuar?"
+        confirmLabel="Generar" onCancel={() => setConfirmRandom(false)} onConfirm={randomizeAll} />
       {open && (
         <ResultModal match={openMatch} teamA={{ name: label(openMatch.team) }} teamB={{ name: label(openMatch.vs) }}
           onSave={(sets, winner) => saveResult(open.roundIdx, open.matchIdx, sets, winner)}
@@ -1771,7 +1823,7 @@ function RegisterView({ id }) {
     if (!isMeetPlay && mode === "pair" && !p2.trim()) return setErr("Falta el nombre de tu compañero/a.");
     if (!level) return setErr("Elegí tu nivel.");
     if (!whatsapp.trim()) return setErr("Falta tu WhatsApp.");
-    if (isMeetPlay && !sex) return setErr("Elegí una opción para continuar.");
+    if (isMeetPlay && !sex) return setErr("Elegí Hombre o Mujer para continuar.");
     setSending(true); setErr("");
     const reg = { id: uid(), mode: isMeetPlay ? "individual" : mode, player1Name:p1.trim(),
       player2Name: (!isMeetPlay && mode === "pair") ? p2.trim() : "", level, whatsapp:whatsapp.trim(),
@@ -1810,13 +1862,10 @@ function RegisterView({ id }) {
         <label className="f"><span>Tu WhatsApp</span><input className="inp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="+41 78 ..." /></label>
       </div>
       {isMeetPlay && (
-        <>
-          <h3 style={{ marginTop:24 }}>Vos</h3>
-          <div className="row" style={{ marginTop:8 }}>
-            <button type="button" className={`btn ${sex==="M" ? "primary" : "ghost"} sm`} onClick={() => setSex("M")}>Hombre</button>
-            <button type="button" className={`btn ${sex==="F" ? "primary" : "ghost"} sm`} onClick={() => setSex("F")}>Mujer</button>
-          </div>
-        </>
+        <div className="row" style={{ marginTop:16 }}>
+          <button type="button" className={`btn ${sex==="M" ? "primary" : "ghost"} sm`} onClick={() => setSex("M")}>Hombre</button>
+          <button type="button" className={`btn ${sex==="F" ? "primary" : "ghost"} sm`} onClick={() => setSex("F")}>Mujer</button>
+        </div>
       )}
       <h3 style={{ marginTop:24 }}>Tu nivel</h3>
       <p className="sub">Escala de Padel Connect. Elegí el que más se parezca a tu juego — no hace falta ser exacto.</p>
