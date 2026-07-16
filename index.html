@@ -424,6 +424,8 @@ function newTournament(cfg) {
     : [];
   return {
     id, eventType:"torneo", name: cfg.name, date: cfg.date,
+    description: cfg.description || "",
+    levelMin: cfg.levelMin || 1, levelMax: cfg.levelMax || 10,
     hasGroupStage: cfg.hasGroupStage,
     numberOfTeams: cfg.numberOfTeams,
     numberOfGroups: cfg.numberOfGroups || 0,
@@ -444,6 +446,8 @@ function newTournament(cfg) {
 function newMeetPlay(cfg) {
   return {
     id: uid(), eventType:"meetplay", name: cfg.name, date: cfg.date,
+    description: cfg.description || "",
+    levelMin: cfg.levelMin || 1, levelMax: cfg.levelMax || 10,
     capacity: cfg.capacity, trackScore: !!cfg.trackScore,
     registrations: [], matches: [],
     createdAt: Date.now(), updatedAt: Date.now(),
@@ -551,10 +555,10 @@ const PADEL_LEVELS = [
   { n:10, name:"Élite", desc:"Soy jugador profesional." },
 ];
 
-function LevelPicker({ value, onChange }) {
+function LevelPicker({ value, onChange, levels = PADEL_LEVELS }) {
   return (
     <div className="levels">
-      {PADEL_LEVELS.map(lv => {
+      {levels.map(lv => {
         const isWhole = value === lv.n, isHalf = value === lv.n + 0.5;
         return (
           <div key={lv.n} className={`levelcard ${isWhole || isHalf ? "sel" : ""}`} role="button" tabIndex={0}
@@ -743,7 +747,7 @@ function EventTypePicker({ onPick, onCancel }) {
 }
 
 function MeetPlayWizard({ onCreate, onCancel }) {
-  const [f, setF] = useState({ name:"", date:new Date().toISOString().slice(0,10), capacity:16, trackScore:true });
+  const [f, setF] = useState({ name:"", date:new Date().toISOString().slice(0,10), description:"", levelMin:1, levelMax:10, capacity:16, trackScore:true });
   const set = (k,v) => setF(s => ({ ...s, [k]:v }));
   const canCreate = f.name.trim().length > 0 && f.capacity >= 4;
   return (
@@ -754,7 +758,14 @@ function MeetPlayWizard({ onCreate, onCancel }) {
         <label className="f"><span>Nombre</span><input className="inp" value={f.name} onChange={e => set("name", e.target.value)} placeholder="Meet & Play de agosto" /></label>
         <label className="f"><span>Fecha</span><input className="inp" type="date" value={f.date} onChange={e => set("date", e.target.value)} /></label>
       </div>
-      <label className="f" style={{ marginTop:12 }}><span>Máximo de personas</span><input className="inp mono" type="number" min="4" value={f.capacity} onChange={e => set("capacity", +e.target.value)} /></label>
+      <label className="f" style={{ marginTop:12 }}><span>Descripción para quien se inscribe (opcional)</span>
+        <textarea className="inp" rows={3} value={f.description} placeholder="Info extra: dónde es, qué llevar, costo, etc."
+          onChange={e => set("description", e.target.value)} /></label>
+      <div className="grid3" style={{ marginTop:12 }}>
+        <label className="f"><span>Máximo de personas</span><input className="inp mono" type="number" min="4" value={f.capacity} onChange={e => set("capacity", +e.target.value)} /></label>
+        <label className="f"><span>Nivel mínimo</span><input className="inp mono" type="number" min="1" max="10" step="0.5" value={f.levelMin} onChange={e => set("levelMin", +e.target.value)} /></label>
+        <label className="f"><span>Nivel máximo</span><input className="inp mono" type="number" min="1" max="10" step="0.5" value={f.levelMax} onChange={e => set("levelMax", +e.target.value)} /></label>
+      </div>
       <label className="row" style={{ marginTop:14, cursor:"pointer" }}>
         <input type="checkbox" checked={f.trackScore} onChange={e => set("trackScore", e.target.checked)} />
         <span>Llevar puntaje individual (suma de games a lo largo del evento)</span>
@@ -770,7 +781,7 @@ function MeetPlayWizard({ onCreate, onCancel }) {
 
 function Wizard({ onCreate, onCancel }) {
   const [step, setStep] = useState(0);
-  const [f, setF] = useState({ name:"", date:new Date().toISOString().slice(0,10), hasGroupStage:true,
+  const [f, setF] = useState({ name:"", date:new Date().toISOString().slice(0,10), description:"", levelMin:1, levelMax:10, hasGroupStage:true,
     numberOfTeams:16, numberOfGroups:4, qualifiersPerGroup:2, knockoutStartRound:8, allowByes:true });
   const set = (k,v) => setF(s => ({ ...s, [k]:v }));
 
@@ -813,12 +824,23 @@ function Wizard({ onCreate, onCancel }) {
       </h2>
 
       {step === 0 && (
-        <div className="grid2">
-          <label className="f"><span>Nombre del torneo</span>
-            <input className="inp" value={f.name} autoFocus placeholder="Copa de verano" onChange={e => set("name", e.target.value)} /></label>
-          <label className="f"><span>Fecha</span>
-            <input className="inp" type="date" value={f.date} onChange={e => set("date", e.target.value)} /></label>
-        </div>
+        <>
+          <div className="grid2">
+            <label className="f"><span>Nombre del torneo</span>
+              <input className="inp" value={f.name} autoFocus placeholder="Copa de verano" onChange={e => set("name", e.target.value)} /></label>
+            <label className="f"><span>Fecha</span>
+              <input className="inp" type="date" value={f.date} onChange={e => set("date", e.target.value)} /></label>
+          </div>
+          <label className="f" style={{ marginTop:12 }}><span>Descripción para quien se inscribe (opcional)</span>
+            <textarea className="inp" rows={3} value={f.description} placeholder="Info extra: dónde es, qué llevar, costo, etc."
+              onChange={e => set("description", e.target.value)} /></label>
+          <div className="grid2" style={{ marginTop:12 }}>
+            <label className="f"><span>Nivel mínimo aceptado</span>
+              <input className="inp mono" type="number" min="1" max="10" step="0.5" value={f.levelMin} onChange={e => set("levelMin", +e.target.value)} /></label>
+            <label className="f"><span>Nivel máximo aceptado</span>
+              <input className="inp mono" type="number" min="1" max="10" step="0.5" value={f.levelMax} onChange={e => set("levelMax", +e.target.value)} /></label>
+          </div>
+        </>
       )}
 
       {step === 1 && (
@@ -1782,6 +1804,7 @@ function RegisterView({ id }) {
     <>
       <h3>Anotate a {t.name}</h3>
       <p className="sub">{t.date}</p>
+      {t.description && <p className="sub" style={{ marginTop:8, whiteSpace:"pre-wrap" }}>{t.description}</p>}
       {showCapacity && (
         <div className={`capbadge ${capTier}`}>
           {full ? "¡Cupo completo!" : `¡Quedan ${capacity - activeOccupied} de ${capacity} lugares!`}
@@ -1807,7 +1830,7 @@ function RegisterView({ id }) {
       )}
       <h3 style={{ marginTop:24 }}>Tu nivel</h3>
       <p className="sub">Escala de Padel Connect. Elegí el que más se parezca a tu juego — no hace falta ser exacto.</p>
-      <LevelPicker value={level} onChange={setLevel} />
+      <LevelPicker value={level} onChange={setLevel} levels={PADEL_LEVELS.filter(lv => lv.n >= (t.levelMin||1) && lv.n <= (t.levelMax||10))} />
       {err && <div className="warn">{err}</div>}
       <button className="btn ball" style={{ marginTop:18 }} disabled={sending} onClick={submit}>{sending ? "Enviando…" : full ? "Anotarme en lista de espera" : "Anotarme"}</button>
     </>
@@ -2051,6 +2074,12 @@ function App() {
               <label className="f"><span>Nombre</span><input className="inp" value={t.name} onChange={e => save({ ...t, name:e.target.value })} /></label>
               <label className="f"><span>Fecha</span><input className="inp" type="date" value={t.date} onChange={e => save({ ...t, date:e.target.value })} /></label>
             </div>
+            <label className="f" style={{ marginTop:12 }}><span>Descripción para quien se inscribe</span>
+              <textarea className="inp" rows={3} value={t.description||""} onChange={e => save({ ...t, description:e.target.value })} /></label>
+            <div className="grid2" style={{ marginTop:12 }}>
+              <label className="f"><span>Nivel mínimo aceptado</span><input className="inp mono" type="number" min="1" max="10" step="0.5" value={t.levelMin||1} onChange={e => save({ ...t, levelMin:+e.target.value })} /></label>
+              <label className="f"><span>Nivel máximo aceptado</span><input className="inp mono" type="number" min="1" max="10" step="0.5" value={t.levelMax||10} onChange={e => save({ ...t, levelMax:+e.target.value })} /></label>
+            </div>
             <label className="row" style={{ marginTop:12, cursor:"pointer" }}>
               <input type="checkbox" checked={t.trackScore} onChange={e => save({ ...t, trackScore:e.target.checked })} />
               <span>Llevar puntaje individual</span>
@@ -2078,7 +2107,13 @@ function App() {
               <label className="f"><span>Nombre</span><input className="inp" value={t.name} onChange={e => save({ ...t, name:e.target.value })} /></label>
               <label className="f"><span>Fecha</span><input className="inp" type="date" value={t.date} onChange={e => save({ ...t, date:e.target.value })} /></label>
             </div>
-            <div className="tblwrap">
+            <label className="f" style={{ marginTop:12 }}><span>Descripción para quien se inscribe</span>
+              <textarea className="inp" rows={3} value={t.description||""} onChange={e => save({ ...t, description:e.target.value })} /></label>
+            <div className="grid2" style={{ marginTop:12 }}>
+              <label className="f"><span>Nivel mínimo aceptado</span><input className="inp mono" type="number" min="1" max="10" step="0.5" value={t.levelMin||1} onChange={e => save({ ...t, levelMin:+e.target.value })} /></label>
+              <label className="f"><span>Nivel máximo aceptado</span><input className="inp mono" type="number" min="1" max="10" step="0.5" value={t.levelMax||10} onChange={e => save({ ...t, levelMax:+e.target.value })} /></label>
+            </div>
+            <div className="tblwrap" style={{ marginTop:12 }}>
               <table>
                 <tbody>
                   <tr><td style={{textAlign:"left",fontFamily:"var(--body)"}}>Formato</td><td style={{textAlign:"left"}}>{t.hasGroupStage ? "Grupos + eliminación directa" : "Eliminación directa"}</td></tr>
