@@ -555,6 +555,92 @@ const PADEL_LEVELS = [
   { n:10, name:"Élite", desc:"Soy jugador profesional." },
 ];
 
+const PADEL_LEVELS_EN = [
+  { n:1, name:"Beginner", desc:"I'm starting to play. I'm learning the basic shots." },
+  { n:2, name:"Improving", desc:"I play the basic shots. I play slowly, with short rallies. I'm starting to volley." },
+  { n:3, name:"Basic", desc:"I play for fun. I can serve and play matches with rallies, trying to keep the ball in play." },
+  { n:4, name:"Intermediate", desc:"I play matches with long rallies and repeated net approaches. I move to the net on serve and after a lob, and fall back on defense against an opponent's lob. I play the ball off the back glass. I read positioning well depending on my partner, whether I'm at the net or at the baseline. I can sometimes return a defensive glass shot or a 360. I make unforced errors." },
+  { n:5, name:"Confirmed", desc:"I have a well-rounded game: serve-and-volley, falling back on lobs, counter-attacking, shots with spin, body or lob returns of serve, and positioning in sync with my partner. I finish points at the net and with smashes. I play the glass in defense and return double-glass shots. I can play the 360. I make some unforced errors, errors under pressure on defense, and errors when forcing my attacks." },
+  { n:6, name:"Advanced", desc:"I have a consistent game, without unforced errors. I control fast play and spin, on serve and in rallies. I vary the zones and speeds of my volleys. I defend glass shots with control. I've fully mastered the 360. I finish points with topspin or controlled smashes, off the glass or with a bandeja. I counter-attack my opponent's smashes." },
+  { n:7, name:"Advanced +", desc:"I master every aspect of the game and padel tactics. I finish points with winners against a solid defense (same level). I don't make unforced errors. I've fully mastered glass shots and use them to counter-attack, along with spin shots, especially the bandeja and vibora." },
+  { n:8, name:"Expert", desc:"Ranked in the top 20 in Switzerland, Open category." },
+  { n:9, name:"Expert +", desc:"Ranked in the top 5 in Switzerland, Open category." },
+  { n:10, name:"Elite", desc:"I'm a professional player." },
+];
+
+const PADEL_LEVELS_FR = [
+  { n:1, name:"Débutant", desc:"Je commence à jouer. J'apprends les coups de base." },
+  { n:2, name:"Perfectionnement", desc:"Je joue les coups de base. Je joue lentement avec des échanges courts. Je commence à volleyer." },
+  { n:3, name:"Élémentaire", desc:"Je joue en loisir. Je sais servir et je joue des matchs avec échanges en essayant de garder la balle en jeu." },
+  { n:4, name:"Intermédiaire", desc:"Je joue des matchs avec de longs échanges et des montées-descentes répétées au filet. Je monte au filet au service et après un lob, et je redescends en défense sur un lob adverse. Je joue la balle après rebond sur la vitre. Je maîtrise le placement selon mon partenaire, que je sois au filet ou au fond du court. Je réussis parfois à remettre en défense de vitre ou un 360. Je fais des fautes non provoquées." },
+  { n:5, name:"Confirmé", desc:"Je maîtrise mon jeu : service-volée, repli sur les lobs, contre-attaque, coups avec effets, retours de service au corps ou en lob, et placement en phase avec mon partenaire. Je finis des points à la volée et en smash. Je joue les vitres en défense et je remets en jeu sur les doubles vitres. Je sais jouer le 360. Je fais quelques fautes non provoquées, des fautes en défense sous pression, et des fautes en forçant mes attaques." },
+  { n:6, name:"Avancé", desc:"J'ai un jeu régulier, sans fautes non provoquées. Je maîtrise le jeu rapide et les effets, au service et dans l'échange. Je varie les zones et vitesses de mes volées. Je défends les doubles vitres avec maîtrise. Je maîtrise parfaitement le 360. Je finis des points en smash lifté ou contrôlé, avec vitre ou en bandeja. Je contre-attaque les smashs de l'adversaire." },
+  { n:7, name:"Avancé +", desc:"Je maîtrise tous les aspects du jeu et les tactiques du padel. Je termine les points par des coups gagnants face à une défense solide (même niveau). Je ne fais pas de fautes directes. Je maîtrise parfaitement les doubles vitres et je les utilise pour contre-attaquer, ainsi que les effets, notamment la bandeja et la vibora." },
+  { n:8, name:"Expert", desc:"Classé dans le top 20 suisse en catégorie Open." },
+  { n:9, name:"Expert +", desc:"Classé dans le top 5 suisse en catégorie Open." },
+  { n:10, name:"Élite", desc:"Je suis joueur professionnel." },
+];
+
+// Textos de la página pública de inscripción, en los tres idiomas. Todo lo
+// demás de la app (la parte de organizador) queda en español nomás.
+const REG_I18N = {
+  es: {
+    flag:"ES", inscripcion:"Inscripción", cargando:"Cargando…",
+    notFoundTitle:"No encontramos este torneo", notFoundBody:"Puede que el link esté mal, o que el torneo se haya borrado.",
+    signupTitle: (isMeetPlay, name) => isMeetPlay ? `Anotate al evento ${name}` : `Anotate al torneo ${name}`,
+    dateLabel:"Fecha",
+    haveCompanion:"Tengo compañero/a", lookingCompanion:"Busco compañero/a",
+    yourName:"Tu nombre", companion:"Compañero/a", nameSurname:"Nombre y apellido", yourWhatsapp:"Tu WhatsApp",
+    man:"Hombre", woman:"Mujer",
+    yourLevel:"Tu nivel", levelHint:"Escala de Padel Connect. Elegí el que más se parezca a tu juego — no hace falta ser exacto.",
+    signupBtn:"Anotarme", signupWaitlistBtn:"Anotarme en lista de espera", sending:"Enviando…",
+    errName:"Falta tu nombre.", errCompanion:"Falta el nombre de tu compañero/a.", errLevel:"Elegí tu nivel.",
+    errWhatsapp:"Falta tu WhatsApp.", errSex:"Elegí Hombre o Mujer para continuar.", errSend:"No se pudo enviar. Probá de nuevo en un rato.",
+    waitlistedTitle:"Quedaste en la lista de espera", waitlistedBody:"El torneo ya tiene el cupo completo. Si se libera un lugar te avisamos por WhatsApp.",
+    doneTitle:"¡Listo, quedaste anotado/a!", doneBody:"Te contactamos por WhatsApp para confirmarte los detalles.",
+    capFull:"¡Cupo completo!", capLeft:(n,c)=>`¡Quedan ${n} de ${c} lugares!`,
+    waitlistNote:() => <>El cupo ya se completó, pero podés anotarte en la <b>lista de espera</b> — te avisamos por WhatsApp si se libera un lugar.</>,
+    levels: PADEL_LEVELS,
+  },
+  en: {
+    flag:"EN", inscripcion:"Registration", cargando:"Loading…",
+    notFoundTitle:"We couldn't find this event", notFoundBody:"The link might be wrong, or the event may have been deleted.",
+    signupTitle: (isMeetPlay, name) => isMeetPlay ? `Sign up for the event ${name}` : `Sign up for the tournament ${name}`,
+    dateLabel:"Date",
+    haveCompanion:"I have a partner", lookingCompanion:"Looking for a partner",
+    yourName:"Your name", companion:"Partner", nameSurname:"First and last name", yourWhatsapp:"Your WhatsApp",
+    man:"Man", woman:"Woman",
+    yourLevel:"Your level", levelHint:"Padel Connect scale. Pick the one closest to your game — it doesn't have to be exact.",
+    signupBtn:"Sign me up", signupWaitlistBtn:"Join the waitlist", sending:"Sending…",
+    errName:"Please enter your name.", errCompanion:"Please enter your partner's name.", errLevel:"Please choose your level.",
+    errWhatsapp:"Please enter your WhatsApp.", errSex:"Please choose Man or Woman to continue.", errSend:"Couldn't send it. Please try again in a bit.",
+    waitlistedTitle:"You're on the waitlist", waitlistedBody:"The event is already full. We'll let you know on WhatsApp if a spot opens up.",
+    doneTitle:"All set, you're signed up!", doneBody:"We'll message you on WhatsApp to confirm the details.",
+    capFull:"Fully booked!", capLeft:(n,c)=>`Only ${n} of ${c} spots left!`,
+    waitlistNote:() => <>The event is already full, but you can join the <b>waitlist</b> — we'll message you on WhatsApp if a spot opens up.</>,
+    levels: PADEL_LEVELS_EN,
+  },
+  fr: {
+    flag:"FR", inscripcion:"Inscription", cargando:"Chargement…",
+    notFoundTitle:"On n'a pas trouvé cet événement", notFoundBody:"Le lien est peut-être erroné, ou l'événement a été supprimé.",
+    signupTitle: (isMeetPlay, name) => isMeetPlay ? `Inscris-toi à l'événement ${name}` : `Inscris-toi au tournoi ${name}`,
+    dateLabel:"Date",
+    haveCompanion:"J'ai un/e partenaire", lookingCompanion:"Je cherche un/e partenaire",
+    yourName:"Ton nom", companion:"Partenaire", nameSurname:"Nom et prénom", yourWhatsapp:"Ton WhatsApp",
+    man:"Homme", woman:"Femme",
+    yourLevel:"Ton niveau", levelHint:"Échelle Padel Connect. Choisis celui qui ressemble le plus à ton jeu — pas besoin d'être exact.",
+    signupBtn:"M'inscrire", signupWaitlistBtn:"Rejoindre la liste d'attente", sending:"Envoi…",
+    errName:"Il manque ton nom.", errCompanion:"Il manque le nom de ton/ta partenaire.", errLevel:"Choisis ton niveau.",
+    errWhatsapp:"Il manque ton WhatsApp.", errSex:"Choisis Homme ou Femme pour continuer.", errSend:"Échec de l'envoi. Réessaie dans un instant.",
+    waitlistedTitle:"Tu es sur liste d'attente", waitlistedBody:"L'événement est déjà complet. On te préviendra par WhatsApp si une place se libère.",
+    doneTitle:"C'est fait, tu es inscrit/e !", doneBody:"On te contacte par WhatsApp pour confirmer les détails.",
+    capFull:"Complet !", capLeft:(n,c)=>`Encore ${n} places sur ${c} !`,
+    waitlistNote:() => <>L'événement est déjà complet, mais tu peux rejoindre la <b>liste d'attente</b> — on te préviendra par WhatsApp si une place se libère.</>,
+    levels: PADEL_LEVELS_FR,
+  },
+};
+const fmtDateDots = iso => { const [y,m,d] = (iso||"").split("-"); return (y&&m&&d) ? `${d}.${m}.${y}` : iso; };
+
 function LevelPicker({ value, onChange, levels = PADEL_LEVELS }) {
   return (
     <div className="levels">
@@ -1732,6 +1818,7 @@ function Gate({ onUnlock }) {
 function RegisterView({ id }) {
   const [t, setT] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [lang, setLang] = useState("es");
   const [mode, setMode] = useState("pair"); // "pair" | "solo"
   const [p1, setP1] = useState("");
   const [p2, setP2] = useState("");
@@ -1742,21 +1829,30 @@ function RegisterView({ id }) {
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
   const [waitlisted, setWaitlisted] = useState(false);
+  const L = REG_I18N[lang];
 
   useEffect(() => { (async () => { setT(await store.get(KEY(id))); setLoading(false); })(); }, [id]);
+
+  const langSwitch = (
+    <div className="row" style={{ justifyContent:"flex-end", marginBottom:10 }}>
+      {Object.keys(REG_I18N).map(k => (
+        <button key={k} type="button" className={`btn ${lang===k ? "primary" : "ghost"} sm`} onClick={() => setLang(k)}>{REG_I18N[k].flag}</button>
+      ))}
+    </div>
+  );
 
   const shell = children => (
     <div className="pista-app">
       <style>{CSS}</style>
       <div className="topbar"><div className="wrap"><div className="topline">
-        <div><div className="meta">Inscripción</div><h1>{t ? t.name : "MoodPadel"}</h1></div>
+        <div><div className="meta">{L.inscripcion}</div><h1>{t ? t.name : "MoodPadel"}</h1></div>
       </div></div></div>
-      <div className="wrap"><div className="card">{children}</div></div>
+      <div className="wrap"><div className="card">{langSwitch}{children}</div></div>
     </div>
   );
 
-  if (loading) return shell(<p className="sub">Cargando…</p>);
-  if (!t) return shell(<><h3>No encontramos este torneo</h3><p className="sub">Puede que el link esté mal, o que el torneo se haya borrado.</p></>);
+  if (loading) return shell(<p className="sub">{L.cargando}</p>);
+  if (!t) return shell(<><h3>{L.notFoundTitle}</h3><p className="sub">{L.notFoundBody}</p></>);
 
   const isMeetPlay = t.eventType === "meetplay";
   const regs = t.registrations || [];
@@ -1770,15 +1866,15 @@ function RegisterView({ id }) {
   const capTier = full ? "full" : pctFull >= 0.8 ? "urgent" : "warn2";
 
   if (done) return shell(waitlisted
-    ? <><h3>Quedaste en la lista de espera</h3><p className="sub">El torneo ya tiene el cupo completo. Si se libera un lugar te avisamos por WhatsApp.</p></>
-    : <><h3>¡Listo, quedaste anotado/a!</h3><p className="sub">Te contactamos por WhatsApp para confirmarte los detalles.</p></>);
+    ? <><h3>{L.waitlistedTitle}</h3><p className="sub">{L.waitlistedBody}</p></>
+    : <><h3>{L.doneTitle}</h3><p className="sub">{L.doneBody}</p></>);
 
   const submit = async () => {
-    if (!p1.trim()) return setErr("Falta tu nombre.");
-    if (!isMeetPlay && mode === "pair" && !p2.trim()) return setErr("Falta el nombre de tu compañero/a.");
-    if (!level) return setErr("Elegí tu nivel.");
-    if (!whatsapp.trim()) return setErr("Falta tu WhatsApp.");
-    if (isMeetPlay && !sex) return setErr("Elegí Hombre o Mujer para continuar.");
+    if (!p1.trim()) return setErr(L.errName);
+    if (!isMeetPlay && mode === "pair" && !p2.trim()) return setErr(L.errCompanion);
+    if (!level) return setErr(L.errLevel);
+    if (!whatsapp.trim()) return setErr(L.errWhatsapp);
+    if (isMeetPlay && !sex) return setErr(L.errSex);
     setSending(true); setErr("");
     const reg = { id: uid(), mode: isMeetPlay ? "individual" : mode, player1Name:p1.trim(),
       player2Name: (!isMeetPlay && mode === "pair") ? p2.trim() : "", level, whatsapp:whatsapp.trim(),
@@ -1791,48 +1887,48 @@ function RegisterView({ id }) {
       });
       const j = await res.json();
       setSending(false);
-      if (!j || j.error) return setErr("No se pudo enviar. Probá de nuevo en un rato.");
+      if (!j || j.error) return setErr(L.errSend);
       setWaitlisted(j.status === "waitlist");
       setDone(true);
     } catch {
       setSending(false);
-      setErr("No se pudo enviar. Probá de nuevo en un rato.");
+      setErr(L.errSend);
     }
   };
 
   return shell(
     <>
-      <h3>Anotate a {t.name}</h3>
-      <p className="sub">{t.date}</p>
+      <h3>{L.signupTitle(isMeetPlay, t.name)}</h3>
       {t.description && <p className="sub" style={{ marginTop:8, whiteSpace:"pre-wrap" }}>{t.description}</p>}
+      <p className="sub" style={{ marginTop:8 }}>{L.dateLabel}: {fmtDateDots(t.date)}</p>
       {showCapacity && (
         <div className={`capbadge ${capTier}`}>
-          {full ? "¡Cupo completo!" : `¡Quedan ${capacity - activeOccupied} de ${capacity} lugares!`}
+          {full ? L.capFull : L.capLeft(capacity - activeOccupied, capacity)}
         </div>
       )}
-      {full && <div className="note">El cupo ya se completó, pero podés anotarte en la <b>lista de espera</b> — te avisamos por WhatsApp si se libera un lugar.</div>}
+      {full && <div className="note">{L.waitlistNote()}</div>}
       {!isMeetPlay && (
         <div className="row" style={{ marginTop:12 }}>
-          <button type="button" className={`btn ${mode==="pair" ? "primary" : "ghost"} sm`} onClick={() => setMode("pair")}>Tengo compañero/a</button>
-          <button type="button" className={`btn ${mode==="solo" ? "primary" : "ghost"} sm`} onClick={() => setMode("solo")}>Busco compañero/a</button>
+          <button type="button" className={`btn ${mode==="pair" ? "primary" : "ghost"} sm`} onClick={() => setMode("pair")}>{L.haveCompanion}</button>
+          <button type="button" className={`btn ${mode==="solo" ? "primary" : "ghost"} sm`} onClick={() => setMode("solo")}>{L.lookingCompanion}</button>
         </div>
       )}
       <div className="grid3" style={{ marginTop:14 }}>
-        <label className="f"><span>Tu nombre</span><input className="inp" value={p1} onChange={e => setP1(e.target.value)} placeholder="Nombre y apellido" /></label>
-        {!isMeetPlay && mode === "pair" && <label className="f"><span>Compañero/a</span><input className="inp" value={p2} onChange={e => setP2(e.target.value)} placeholder="Nombre y apellido" /></label>}
-        <label className="f"><span>Tu WhatsApp</span><input className="inp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="+41 78 ..." /></label>
+        <label className="f"><span>{L.yourName}</span><input className="inp" value={p1} onChange={e => setP1(e.target.value)} placeholder={L.nameSurname} /></label>
+        {!isMeetPlay && mode === "pair" && <label className="f"><span>{L.companion}</span><input className="inp" value={p2} onChange={e => setP2(e.target.value)} placeholder={L.nameSurname} /></label>}
+        <label className="f"><span>{L.yourWhatsapp}</span><input className="inp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="+41 78 ..." /></label>
       </div>
       {isMeetPlay && (
         <div className="row" style={{ marginTop:16 }}>
-          <button type="button" className={`btn ${sex==="M" ? "primary" : "ghost"} sm`} onClick={() => setSex("M")}>Hombre</button>
-          <button type="button" className={`btn ${sex==="F" ? "primary" : "ghost"} sm`} onClick={() => setSex("F")}>Mujer</button>
+          <button type="button" className={`btn ${sex==="M" ? "primary" : "ghost"} sm`} onClick={() => setSex("M")}>{L.man}</button>
+          <button type="button" className={`btn ${sex==="F" ? "primary" : "ghost"} sm`} onClick={() => setSex("F")}>{L.woman}</button>
         </div>
       )}
-      <h3 style={{ marginTop:24 }}>Tu nivel</h3>
-      <p className="sub">Escala de Padel Connect. Elegí el que más se parezca a tu juego — no hace falta ser exacto.</p>
-      <LevelPicker value={level} onChange={setLevel} levels={PADEL_LEVELS.filter(lv => lv.n >= (t.levelMin||1) && lv.n <= (t.levelMax||10))} />
+      <h3 style={{ marginTop:24 }}>{L.yourLevel}</h3>
+      <p className="sub">{L.levelHint}</p>
+      <LevelPicker value={level} onChange={setLevel} levels={L.levels.filter(lv => lv.n >= (t.levelMin||1) && lv.n <= (t.levelMax||10))} />
       {err && <div className="warn">{err}</div>}
-      <button className="btn ball" style={{ marginTop:18 }} disabled={sending} onClick={submit}>{sending ? "Enviando…" : full ? "Anotarme en lista de espera" : "Anotarme"}</button>
+      <button className="btn ball" style={{ marginTop:18 }} disabled={sending} onClick={submit}>{sending ? L.sending : full ? L.signupWaitlistBtn : L.signupBtn}</button>
     </>
   );
 }
