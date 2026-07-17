@@ -426,6 +426,7 @@ function newTournament(cfg) {
     id, eventType:"torneo", name: cfg.name, date: cfg.date,
     description: cfg.description || "",
     levelMin: cfg.levelMin || 1, levelMax: cfg.levelMax || 10,
+    registrationClosed: false,
     hasGroupStage: cfg.hasGroupStage,
     numberOfTeams: cfg.numberOfTeams,
     numberOfGroups: cfg.numberOfGroups || 0,
@@ -448,6 +449,7 @@ function newMeetPlay(cfg) {
     id: uid(), eventType:"meetplay", name: cfg.name, date: cfg.date,
     description: cfg.description || "",
     levelMin: cfg.levelMin || 1, levelMax: cfg.levelMax || 10,
+    registrationClosed: false,
     capacity: cfg.capacity, trackScore: !!cfg.trackScore,
     registrations: [], matches: [],
     createdAt: Date.now(), updatedAt: Date.now(),
@@ -1860,9 +1862,9 @@ function RegisterView({ id }) {
   const activeOccupied = isMeetPlay
     ? regs.filter(r => r.status !== "waitlist").length
     : t.teams.length + regs.filter(r => r.status !== "waitlist").length;
-  const full = capacity != null && activeOccupied >= capacity;
+  const full = !!t.registrationClosed || (capacity != null && activeOccupied >= capacity);
   const pctFull = capacity ? activeOccupied / capacity : 0;
-  const showCapacity = capacity != null && pctFull >= 0.5;
+  const showCapacity = full || (capacity != null && pctFull >= 0.5);
   const capTier = full ? "full" : pctFull >= 0.8 ? "urgent" : "warn2";
 
   if (done) return shell(waitlisted
@@ -2180,6 +2182,10 @@ function App() {
               <input type="checkbox" checked={t.trackScore} onChange={e => save({ ...t, trackScore:e.target.checked })} />
               <span>Llevar puntaje individual</span>
             </label>
+            <label className="row" style={{ marginTop:10, cursor:"pointer" }}>
+              <input type="checkbox" checked={!!t.registrationClosed} onChange={e => save({ ...t, registrationClosed:e.target.checked })} />
+              <span>Cerrar inscripción (quien se anote cae directo en lista de espera)</span>
+            </label>
             <div className="tblwrap" style={{ marginTop:12 }}>
               <table>
                 <tbody>
@@ -2209,6 +2215,10 @@ function App() {
               <label className="f"><span>Nivel mínimo aceptado</span><input className="inp mono" type="number" min="1" max="10" step="0.5" value={t.levelMin||1} onChange={e => save({ ...t, levelMin:+e.target.value })} /></label>
               <label className="f"><span>Nivel máximo aceptado</span><input className="inp mono" type="number" min="1" max="10" step="0.5" value={t.levelMax||10} onChange={e => save({ ...t, levelMax:+e.target.value })} /></label>
             </div>
+            <label className="row" style={{ marginTop:12, cursor:"pointer" }}>
+              <input type="checkbox" checked={!!t.registrationClosed} onChange={e => save({ ...t, registrationClosed:e.target.checked })} />
+              <span>Cerrar inscripción (quien se anote cae directo en lista de espera)</span>
+            </label>
             <div className="tblwrap" style={{ marginTop:12 }}>
               <table>
                 <tbody>
